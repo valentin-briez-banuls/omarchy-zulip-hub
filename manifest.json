@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "id": "io.github.valentin-briez-banuls.zulip-hub",
+  "name": "Zulip Hub",
+  "version": "2.0.0",
+  "author": "Valentin Briez-Banuls",
+  "license": "MIT",
+  "description": "Zulip messages, notifications, and direct replies integrated into Omarchy.",
+  "kinds": ["bar-widget", "service"],
+  "entryPoints": {
+    "barWidget": "plugin/Panel.qml",
+    "service": "plugin/Service.qml"
+  },
+  "barWidget": {
+    "displayName": "Zulip Hub",
+    "description": "Read and send Zulip messages from the Omarchy bar.",
+    "category": "Communication",
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "showTotal": true,
+      "showMentions": true,
+      "hideWhenEmpty": false,
+      "refreshIntervalSec": 2
+    }
+  }
+}

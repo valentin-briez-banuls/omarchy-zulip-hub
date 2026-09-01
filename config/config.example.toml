@@ -1,0 +1,35 @@
+[account]
+site = "https://zulip.example.com"
+email = "prenom.nom@example.com"
+
+[bridge]
+recent_message_limit = 30
+request_timeout_seconds = 90
+initial_backoff_seconds = 1
+max_backoff_seconds = 60
+
+[notifications]
+enabled = true
+private_messages = true
+mentions = true
+followed_topics = true
+other_messages = false
+hide_content_when_locked = true
+group_window_seconds = 10
+muted_channels = []
+always_channels = []
+
+[open]
+mode = "auto"
+# Example for a desktop client accepting URLs:
+# desktop_command = ["zulip"]
+desktop_command = []
+
+[workspace]
+name = "zulip"
+class_pattern = "^(Zulip|zulip|zulip-hub|org\\.zulip\\.Zulip)$"
+# Leave empty to use open.desktop_command, then an Omarchy webapp fallback.
+launch_command = []
+
+[meta]
+schema_version = 1

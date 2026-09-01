@@ -1,0 +1,87 @@
+.pragma library
+
+var strings = {
+  fr: {
+    connected: "Connecté", offline: "Hors ligne", waiting: "En attente du bridge",
+    secureConnection: "Connexion sécurisée au serveur de votre organisation", unread: "non lus",
+    configuration: "Configuration", settings: "Réglages", messages: "Messages",
+    compose: "Nouveau MP", active: "ACTIF", account: "COMPTE ZULIP", welcome: "BIENVENUE",
+    secureKey: "La clé API est transmise au processus local par entrée standard et stockée uniquement dans le trousseau système.",
+    newDirect: "NOUVEAU MESSAGE DIRECT", searchPerson: "Rechercher un collègue",
+    loadingDirectory: "Chargement de l’annuaire…", messagePlaceholder: "Votre message (Markdown pris en charge)",
+    sending: "Envoi…", send: "Envoyer", refreshDirectory: "Actualiser l’annuaire",
+    notifications: "NOTIFICATIONS", enableNotifications: "Activer les notifications",
+    directMessages: "Messages directs", mentions: "Mentions", followedTopics: "Topics suivis",
+    otherMessages: "Autres messages", hideLocked: "Masquer le contenu si verrouillé",
+    groupSeconds: "Regroupement en secondes (1–300)", mutedChannels: "Canaux muets, séparés par des virgules",
+    alwaysChannels: "Canaux toujours notifiés, séparés par des virgules", opening: "OUVERTURE ET WORKSPACE",
+    desktopCommand: "Commande du client desktop (facultative)", workspaceCommand: "Commande de lancement du workspace (facultative)",
+    saveSettings: "Enregistrer les réglages", saving: "Enregistrement…", accountService: "COMPTE ET SERVICE",
+    editAccount: "Modifier le compte Zulip", openDiagnostics: "Ouvrir le diagnostic",
+    pauseService: "Mettre le service en pause", resumeService: "Réactiver le service",
+    diagnostics: "DIAGNOSTIC DU BRIDGE", service: "Service", zulipApi: "API Zulip",
+    lastSync: "Dernière synchro", localState: "État local", available: "disponible", absent: "absent",
+    backSettings: "Retour aux réglages", refresh: "Actualiser", reconnect: "Reconnecter",
+    total: "TOTAL", direct: "DIRECT", recentUnread: "NON LUS RÉCENTS",
+    noRecent: "Aucune conversation non lue récente.",
+    homeHelp: "↑/↓ ou j/k naviguent • Entrée ouvre • X marque comme lu • R actualise • Échap ferme",
+    configureHelp: "Tab navigue • Entrée édite ou active • Échap revient",
+    composeHelp: "Tab navigue • Entrée sélectionne • Ctrl+Entrée envoie • Échap revient",
+    directConversation: "Message direct", channelMessage: "Message de canal",
+    markRead: "Marquer comme lu", returnSettings: "Retour aux réglages", testActivate: "Tester et activer",
+    checking: "Vérification…", disconnect: "Déconnecter", apiConnected: "connectée", apiOffline: "hors ligne",
+    sent: "Message envoyé.", invalidLocal: "Réponse locale invalide.", operationFailed: "L’opération a échoué.",
+    uncertain: "Livraison incertaine : vérifiez Zulip avant de renvoyer. ",
+    noLocalResponse: "Le service local n’a renvoyé aucune réponse.", composeUnavailable: "Impossible de joindre le service de composition.",
+    osIntegration: "INTÉGRATION OMARCHY", osIntegrationDescription: "Ajoute Super+Z pour ouvrir le panneau et Super+Maj+Z pour le workspace Zulip.",
+    enableShortcuts: "Activer les raccourcis Omarchy", removeShortcuts: "Retirer les raccourcis Omarchy",
+    shortcutsEnabled: "Raccourcis Omarchy activés.", shortcutsDisabled: "Raccourcis Omarchy retirés.", working: "Traitement…"
+  },
+  en: {
+    connected: "Connected", offline: "Offline", waiting: "Waiting for bridge",
+    secureConnection: "Secure connection to your organization’s server", unread: "unread",
+    configuration: "Configuration", settings: "Settings", messages: "Messages",
+    compose: "New DM", active: "ACTIVE", account: "ZULIP ACCOUNT", welcome: "WELCOME",
+    secureKey: "The API key is sent to the local process over standard input and stored only in the system keyring.",
+    newDirect: "NEW DIRECT MESSAGE", searchPerson: "Search for a colleague",
+    loadingDirectory: "Loading directory…", messagePlaceholder: "Your message (Markdown supported)",
+    sending: "Sending…", send: "Send", refreshDirectory: "Refresh directory",
+    notifications: "NOTIFICATIONS", enableNotifications: "Enable notifications",
+    directMessages: "Direct messages", mentions: "Mentions", followedTopics: "Followed topics",
+    otherMessages: "Other messages", hideLocked: "Hide content while locked",
+    groupSeconds: "Grouping window in seconds (1–300)", mutedChannels: "Muted channels, comma-separated",
+    alwaysChannels: "Always-notify channels, comma-separated", opening: "OPENING AND WORKSPACE",
+    desktopCommand: "Desktop client command (optional)", workspaceCommand: "Workspace launch command (optional)",
+    saveSettings: "Save settings", saving: "Saving…", accountService: "ACCOUNT AND SERVICE",
+    editAccount: "Edit Zulip account", openDiagnostics: "Open diagnostics",
+    pauseService: "Pause service", resumeService: "Resume service",
+    diagnostics: "BRIDGE DIAGNOSTICS", service: "Service", zulipApi: "Zulip API",
+    lastSync: "Last sync", localState: "Local state", available: "available", absent: "absent",
+    backSettings: "Back to settings", refresh: "Refresh", reconnect: "Reconnect",
+    total: "TOTAL", direct: "DIRECT", recentUnread: "RECENT UNREAD",
+    noRecent: "No recent unread conversations.",
+    homeHelp: "↑/↓ or j/k navigate • Enter opens • X marks read • R refreshes • Esc closes",
+    configureHelp: "Tab navigates • Enter edits or activates • Esc goes back",
+    composeHelp: "Tab navigates • Enter selects • Ctrl+Enter sends • Esc goes back",
+    directConversation: "Direct message", channelMessage: "Channel message",
+    markRead: "Mark as read", returnSettings: "Back to settings", testActivate: "Test and activate",
+    checking: "Checking…", disconnect: "Disconnect", apiConnected: "connected", apiOffline: "offline",
+    sent: "Message sent.", invalidLocal: "Invalid local response.", operationFailed: "The operation failed.",
+    uncertain: "Delivery uncertain: check Zulip before sending again. ",
+    noLocalResponse: "The local service returned no response.", composeUnavailable: "Unable to reach the compose service.",
+    osIntegration: "OMARCHY INTEGRATION", osIntegrationDescription: "Adds Super+Z to open the panel and Super+Shift+Z for the Zulip workspace.",
+    enableShortcuts: "Enable Omarchy shortcuts", removeShortcuts: "Remove Omarchy shortcuts",
+    shortcutsEnabled: "Omarchy shortcuts enabled.", shortcutsDisabled: "Omarchy shortcuts removed.", working: "Working…"
+  }
+}
+
+function language(localeName) {
+  var normalized = String(localeName || "").replace("-", "_").toLowerCase()
+  return normalized.indexOf("fr_") === 0 || normalized === "fr" || normalized === "c" || normalized.indexOf("c.") === 0
+    ? "fr" : "en"
+}
+
+function text(key, localeName) {
+  var selected = strings[language(localeName)]
+  return selected[key] === undefined ? key : selected[key]
+}
