@@ -48,9 +48,11 @@ Panel {
   property var fallbackComposer: ({
     available: false, open: false, loaded: false, busy: false, users: [], selectedIds: [],
     query: "", content: "", error: "", message: "", maxMessageLength: 10000,
+    replying: false, replyTarget: null, replyDestination: "",
     loadDirectory: function() {}, filteredUsers: function() { return [] },
     selectedUsers: function() { return [] }, isSelected: function() { return false },
-    toggleUser: function() {}, send: function() { return false }
+    toggleUser: function() {}, send: function() { return false },
+    startReply: function() {}, startCompose: function() {}
   })
 
   readonly property color foreground: bar ? bar.foreground : Color.foreground
@@ -121,9 +123,13 @@ Panel {
       appendTarget(rows, siteField); appendTarget(rows, emailField); appendTarget(rows, apiKeyField)
       appendTarget(rows, connectButton); appendTarget(rows, disconnectButton)
     } else if (root.showComposer) {
-      appendTarget(rows, composeNavButton); appendTarget(rows, composeSearchField)
-      appendChildren(rows, recipientResults)
-      appendTarget(rows, composeField); appendTarget(rows, sendButton); appendTarget(rows, refreshDirectoryButton)
+      appendTarget(rows, composeNavButton)
+      if (!composer.replying) {
+        appendTarget(rows, composeSearchField)
+        appendChildren(rows, recipientResults)
+      }
+      appendTarget(rows, composeField); appendTarget(rows, sendButton)
+      if (!composer.replying) appendTarget(rows, refreshDirectoryButton)
     } else if (root.showSettings) {
       appendTarget(rows, settingsNavButton)
       appendTarget(rows, notifyEnabled); appendTarget(rows, notifyPrivate); appendTarget(rows, notifyMentions)
@@ -213,6 +219,17 @@ Panel {
     openProcess.command = ["/usr/bin/python3", root.runnerPath, "open-message", String(row.id)]
     openProcess.running = true
     close()
+  }
+
+  function replyToMessage(row) {
+    if (!row || composer.available !== true) return
+    root.actionError = ""
+    root.actionMessage = ""
+    onboarding.settingsOpen = false
+    onboarding.diagnosticsOpen = false
+    composer.startReply(row)
+    // L annuaire porte aussi la limite de taille du serveur ; il est mis en cache.
+    composer.loadDirectory(false)
   }
 
   function markMessageRead(row) {
@@ -369,6 +386,7 @@ Panel {
       onTabRequested: function(direction) { root.moveCursor(direction) }
       onTextKey: function(text) {
         if (text === "r" || text === "R") hub.refresh()
+        else if (text === "a" || text === "A") root.replyToMessage(root.selectedMessage())
       }
 
       Flickable {
@@ -426,7 +444,7 @@ Panel {
                   root.actionMessage = ""
                   onboarding.settingsOpen = false
                   onboarding.diagnosticsOpen = false
-                  composer.open = true
+                  composer.startCompose()
                   composer.loadDirectory(false)
                 }
               }
@@ -581,10 +599,27 @@ Panel {
             width: parent.width
             spacing: Style.space(8)
 
-            PanelSectionHeader { text: root.t("newDirect"); foreground: root.foreground; fontFamily: root.fontFamily }
+            PanelSectionHeader {
+              text: composer.replying ? root.t("replyTitle") : root.t("newDirect")
+              foreground: root.foreground
+              fontFamily: root.fontFamily
+            }
+
+            Text {
+              visible: composer.replying
+              width: parent.width
+              text: composer.replyDestination
+              textFormat: Text.PlainText
+              elide: Text.ElideRight
+              color: root.foreground
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.body
+              font.bold: true
+            }
 
             TextField {
               id: composeSearchField
+              visible: !composer.replying
               width: parent.width
               placeholderText: composer.loaded ? root.t("searchPerson") : root.t("loadingDirectory")
               text: composer.query
@@ -606,6 +641,7 @@ Panel {
             }
 
             Flow {
+              visible: !composer.replying
               width: parent.width
               spacing: Style.space(5)
               Repeater {
@@ -635,6 +671,7 @@ Panel {
 
             Column {
               id: recipientResults
+              visible: !composer.replying
               width: parent.width
               spacing: Style.space(4)
               Repeater {
@@ -692,7 +729,8 @@ Panel {
               Button {
                 id: sendButton
                 text: composer.busy ? root.t("sending") : root.t("send")
-                enabled: !composer.busy && composer.selectedIds.length > 0
+                enabled: !composer.busy
+                  && (composer.replying || composer.selectedIds.length > 0)
                   && composer.content.trim() !== ""
                   && composer.content.length <= composer.maxMessageLength
                 onClicked: composer.send()
@@ -705,6 +743,7 @@ Panel {
 
             Button {
               id: refreshDirectoryButton
+              visible: !composer.replying
               width: parent.width
               text: root.t("refreshDirectory")
               enabled: !composer.busy
@@ -1294,6 +1333,17 @@ Panel {
         font.family: root.fontFamily
         font.pixelSize: Style.font.caption
         Layout.alignment: Qt.AlignTop
+      }
+
+      PanelActionButton {
+        iconText: "↩"
+        tooltipText: root.t("reply")
+        foreground: root.foreground
+        hoverColor: root.foreground
+        fontFamily: root.fontFamily
+        enabled: composer.available === true && !composer.busy
+        Layout.alignment: Qt.AlignVCenter
+        onClicked: root.replyToMessage(messageRow.row)
       }
 
       PanelActionButton {

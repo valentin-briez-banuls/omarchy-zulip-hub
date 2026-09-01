@@ -74,6 +74,32 @@ class APITests(unittest.TestCase):
             self.assertEqual(client.send_direct([7], "Bonjour"), 100)
         self.assertEqual(request.call_args_list[1].args[2]["type"], "private")
 
+    def test_send_stream_targets_the_channel_by_id_and_topic(self):
+        client = ZulipClient("https://chat.example.com", "me@example.com", "top-secret")
+        with patch.object(client, "_request", return_value={"id": 77}) as request:
+            result = client.send_stream(9, "deployment", "C’est reparti")
+        request.assert_called_once_with("POST", "messages", {
+            "type": "stream", "to": 9, "topic": "deployment", "content": "C’est reparti",
+        })
+        self.assertEqual(result, 77)
+
+    def test_send_stream_falls_back_only_when_the_modern_topic_field_is_rejected(self):
+        client = ZulipClient("https://chat.example.com", "me@example.com", "top-secret")
+        rejected = ZulipAPIError("Invalid parameter topic", code="BAD_REQUEST", retryable=False)
+        with patch.object(client, "_request", side_effect=[rejected, {"id": 78}]) as request:
+            self.assertEqual(client.send_stream(9, "deployment", "Bonjour"), 78)
+        legacy = request.call_args_list[1].args[2]
+        self.assertNotIn("topic", legacy)
+        self.assertEqual(legacy["subject"], "deployment")
+
+    def test_send_stream_does_not_retry_an_ambiguous_failure(self):
+        client = ZulipClient("https://chat.example.com", "me@example.com", "top-secret")
+        failure = ZulipAPIError("serveur inaccessible", retryable=True)
+        with patch.object(client, "_request", side_effect=failure) as request:
+            with self.assertRaises(ZulipAPIError):
+                client.send_stream(9, "deployment", "Bonjour")
+        request.assert_called_once()
+
     def test_send_direct_does_not_retry_an_ambiguous_failure(self):
         client = ZulipClient("https://chat.example.com", "me@example.com", "top-secret")
         failure = ZulipAPIError("serveur inaccessible", retryable=True)

@@ -15,6 +15,22 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# grim attend une image du compositeur. Ecran en veille, cette attente ne finit
+# jamais : mieux vaut echouer que bloquer sans rien afficher. Une sortie qui
+# vient d etre rallumee met un instant a se declarer active, d ou l attente.
+awake=0
+for _ in $(seq 1 12); do
+  if [[ $(hyprctl monitors -j | jq -r "any(.[]; .dpmsStatus == true)") == true ]]; then
+    awake=1
+    break
+  fi
+  sleep 0.5
+done
+(( awake )) || {
+  echo "make-preview: reveillez l ecran avant de capturer" >&2
+  exit 1
+}
+
 cp -a /usr/share/omarchy/shell "$test_root/shell"
 mkdir -p "$test_root/shell/plugins/$plugin_id"
 for item in plugin src config hyprland run-plugin.py manifest.json; do
@@ -45,5 +61,8 @@ sleep 2
 geometry_line=$(grep ZULIP_HUB_PREVIEW_GEOMETRY "$test_root/log" | tail -1)
 read -r x y w h <<<"${geometry_line##*ZULIP_HUB_PREVIEW_GEOMETRY}"
 
-grim -g "$x,$y ${w}x${h}" "$project_dir/preview.png"
+timeout 20 grim -g "$x,$y ${w}x${h}" "$project_dir/preview.png" || {
+  echo "make-preview: grim na pas rendu dimage en 20 s" >&2
+  exit 1
+}
 echo "preview.png regenere depuis $x,$y ${w}x${h}"

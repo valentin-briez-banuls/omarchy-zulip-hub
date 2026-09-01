@@ -1,5 +1,14 @@
 # Historique des versions
 
+## 2.1.0 — 2026-09-02
+
+- Réponse depuis le panneau : `A` ou le bouton ↩ répond dans la conversation
+  d'origine, aussi bien pour un message direct que pour un canal.
+- La destination d'une réponse est déduite par le bridge depuis son état local ;
+  l'interface ne transmet qu'un identifiant de message, jamais un destinataire.
+- Envoi dans un canal et son topic, avec repli sur les serveurs Zulip
+  antérieurs à la 2.0.
+
 ## 2.0.0 — 2026-09-01
 
 - Distribution native via Omarchy Plugin Marketplace avec manifeste racine namespacé.

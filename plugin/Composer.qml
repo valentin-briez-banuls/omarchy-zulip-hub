@@ -17,6 +17,18 @@ QtObject {
   property string error: ""
   property string message: ""
   property int maxMessageLength: 10000
+  property var replyTarget: null
+  readonly property bool replying: root.replyTarget !== null
+  readonly property string replyDestination: {
+    if (!root.replyTarget) return ""
+    if (root.replyTarget.type === "stream") {
+      var channel = String(root.replyTarget.channel || "")
+      var topic = String(root.replyTarget.topic || "")
+      return (channel ? "#" + channel : root.t("channelMessage"))
+        + (topic ? "  ›  " + topic : "")
+    }
+    return String(root.replyTarget.sender || root.t("directConversation"))
+  }
   property var pendingRequest: null
   property string activeAction: ""
   property string responseLine: ""
@@ -39,6 +51,23 @@ QtObject {
     process.command = ["/usr/bin/python3", root.runnerPath, "compose"]
     process.running = true
     return true
+  }
+
+  // Repondre garde le brouillon tant que la conversation visee ne change pas.
+  function startReply(row) {
+    if (!row) return
+    root.error = ""
+    root.message = ""
+    if (!root.replyTarget || Number(root.replyTarget.id) !== Number(row.id)) root.content = ""
+    root.replyTarget = row
+    root.open = true
+  }
+
+  function startCompose() {
+    root.error = ""
+    root.message = ""
+    root.replyTarget = null
+    root.open = true
   }
 
   function loadDirectory(force) {
@@ -90,8 +119,14 @@ QtObject {
   }
 
   function send() {
-    if (root.selectedIds.length === 0 || root.content.trim() === ""
-        || root.content.length > root.maxMessageLength) return false
+    if (root.content.trim() === "" || root.content.length > root.maxMessageLength) return false
+    if (root.replying) {
+      // Seul l identifiant part : le pont deduit la destination de son propre etat.
+      var target = Number(root.replyTarget.id) || 0
+      if (target <= 0) return false
+      return request({ action: "reply", message_id: target, content: root.content })
+    }
+    if (root.selectedIds.length === 0) return false
     return request({
       action: "send_direct",
       recipient_ids: root.selectedIds,
@@ -120,11 +155,12 @@ QtObject {
       root.loaded = true
       return
     }
-    if (root.activeAction === "send_direct") {
+    if (root.activeAction === "send_direct" || root.activeAction === "reply") {
       var messageId = Number(response.message_id) || 0
       root.selectedIds = []
       root.query = ""
       root.content = ""
+      root.replyTarget = null
       root.message = root.t("sent")
       root.open = false
       root.sent(messageId)

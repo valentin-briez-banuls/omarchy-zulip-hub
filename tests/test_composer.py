@@ -21,9 +21,16 @@ class ComposerTests(unittest.TestCase):
         )
         self.state.write_text(json.dumps({
             "max_message_length": 120,
-            "recent": [{
-                "type": "private", "sender_id": 7, "recipient_ids": [1, 7, 8],
-            }],
+            "recent": [
+                {
+                    "id": 42, "type": "private", "sender_id": 7,
+                    "recipient_ids": [1, 7, 8],
+                },
+                {
+                    "id": 43, "type": "stream", "sender_id": 7, "stream_id": 9,
+                    "channel": "backend", "topic": "deployment", "recipient_ids": [],
+                },
+            ],
         }), encoding="utf-8")
         self.secrets = Mock()
         self.secrets.get.return_value = "top-secret"
@@ -71,6 +78,49 @@ class ComposerTests(unittest.TestCase):
         ):
             with self.subTest(payload=payload), self.assertRaises(ComposerError):
                 manager.send_direct(payload)
+
+    @patch("zulip_hub.composer.ZulipClient")
+    def test_reply_to_a_direct_message_answers_the_same_people_without_me(self, client_class):
+        client = client_class.return_value
+        client.test_connection.return_value = {"user_id": 1}
+        client.send_direct.return_value = 51
+        manager = ComposerManager(self.config, self.state, self.secrets)
+        result = manager.reply({"message_id": 42, "content": "Bien reçu"})
+        client.send_direct.assert_called_once_with([7, 8], "Bien reçu")
+        self.assertEqual(result, {"ok": True, "message_id": 51})
+
+    @patch("zulip_hub.composer.ZulipClient")
+    def test_reply_to_a_channel_message_answers_in_the_same_topic(self, client_class):
+        client_class.return_value.send_stream.return_value = 52
+        manager = ComposerManager(self.config, self.state, self.secrets)
+        result = manager.reply({"message_id": 43, "content": "Je m’en occupe"})
+        client_class.return_value.send_stream.assert_called_once_with(
+            9, "deployment", "Je m’en occupe",
+        )
+        self.assertEqual(result, {"ok": True, "message_id": 52})
+
+    @patch("zulip_hub.composer.ZulipClient")
+    def test_handle_routes_the_reply_action(self, client_class):
+        client_class.return_value.send_stream.return_value = 53
+        manager = ComposerManager(self.config, self.state, self.secrets)
+        result = manager.handle({"action": "reply", "message_id": 43, "content": "ok"})
+        self.assertEqual(result, {"ok": True, "message_id": 53})
+
+    def test_reply_refuses_a_message_absent_from_the_local_state(self):
+        manager = ComposerManager(self.config, self.state, self.secrets)
+        with self.assertRaises(ComposerError):
+            manager.reply({"message_id": 999, "content": "Bonjour"})
+
+    def test_reply_applies_the_same_content_limits_as_a_new_message(self):
+        manager = ComposerManager(self.config, self.state, self.secrets)
+        for payload in (
+            {"message_id": 42, "content": "   "},
+            {"message_id": 42, "content": "x" * 121},
+            {"message_id": True, "content": "Bonjour"},
+            {"message_id": 42},
+        ):
+            with self.subTest(payload=payload), self.assertRaises(ComposerError):
+                manager.reply(payload)
 
     @patch("zulip_hub.composer.ComposerManager.handle")
     def test_protocol_reports_uncertain_delivery_without_echoing_content(self, handle):

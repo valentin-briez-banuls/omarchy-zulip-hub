@@ -86,6 +86,30 @@ ShellRoot {
         Qt.exit(1)
         return
       }
+      plugin.composerController.startReply({
+        id: 43, type: "stream", channel: "backend", topic: "deployment", sender: "Alice"
+      })
+      if (!plugin.showComposer || plugin.composerController.replying !== true
+          || plugin.composerController.replyDestination !== "#backend  \u203a  deployment") {
+        console.error("ZULIP_HUB_REPLY_STATE_MISMATCH")
+        Qt.exit(1)
+        return
+      }
+      plugin.composerController.startReply({
+        id: 42, type: "private", sender: "Bob Durand"
+      })
+      if (plugin.composerController.replyDestination !== "Bob Durand") {
+        console.error("ZULIP_HUB_REPLY_DIRECT_MISMATCH")
+        Qt.exit(1)
+        return
+      }
+      plugin.composerController.startCompose()
+      if (plugin.composerController.replying !== false) {
+        console.error("ZULIP_HUB_REPLY_NOT_CLEARED")
+        Qt.exit(1)
+        return
+      }
+      plugin.composerController.open = false
       if (expectOffline) {
         if (plugin.hub.loaded || plugin.hub.connected || plugin.hub.statusText === "") {
           console.error("ZULIP_HUB_OFFLINE_STATE_MISMATCH")

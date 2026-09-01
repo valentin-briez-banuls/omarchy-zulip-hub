@@ -79,16 +79,49 @@ class ComposerManager:
             for value in candidates:
                 if isinstance(value, int) and value > 0 and value != self_id and value not in recent_ids:
                     recent_ids.append(value)
-        maximum = state.get("max_message_length", 10000)
-        if not isinstance(maximum, int) or isinstance(maximum, bool) or maximum <= 0:
-            maximum = 10000
         return {
             "ok": True,
             "users": users,
             "recent_user_ids": recent_ids,
-            "max_message_length": maximum,
+            "max_message_length": self._max_message_length(),
             "site": config.account.site,
         }
+
+    def _max_message_length(self) -> int:
+        maximum = self._local_state().get("max_message_length", 10000)
+        if not isinstance(maximum, int) or isinstance(maximum, bool) or maximum <= 0:
+            return 10000
+        return maximum
+
+    def _validated_content(self, request: dict[str, Any]) -> str:
+        content = request.get("content")
+        if not isinstance(content, str) or not content.strip():
+            raise ComposerError("Le message est vide.")
+        maximum = self._max_message_length()
+        if len(content) > maximum:
+            raise ComposerError(f"Le message dépasse la limite de {maximum} caractères.")
+        return content
+
+    def _recent_row(self, request: dict[str, Any]) -> dict[str, Any]:
+        """Retrouve la conversation d’origine dans l’état local.
+
+        La destination d’une réponse n’est jamais fournie par l’appelant : seul un
+        identifiant circule, et le pont la déduit de son propre état. Une interface
+        compromise ne peut donc pas rediriger un message.
+        """
+        message_id = request.get("message_id")
+        if not isinstance(message_id, int) or isinstance(message_id, bool) or message_id <= 0:
+            raise ComposerError("Le message auquel répondre est invalide.")
+        for row in self._local_state().get("recent", []):
+            if isinstance(row, dict) and row.get("id") == message_id:
+                return row
+        raise ComposerError("Ce message n’est plus dans les conversations récentes.")
+
+    @staticmethod
+    def _positive_int(value: Any) -> int | None:
+        if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+            return value
+        return None
 
     @staticmethod
     def _recipient_ids(request: dict[str, Any]) -> list[int]:
@@ -109,17 +142,39 @@ class ComposerManager:
 
     def send_direct(self, request: dict[str, Any]) -> dict[str, Any]:
         recipient_ids = self._recipient_ids(request)
-        content = request.get("content")
-        if not isinstance(content, str) or not content.strip():
-            raise ComposerError("Le message est vide.")
-        state = self._local_state()
-        maximum = state.get("max_message_length", 10000)
-        if not isinstance(maximum, int) or isinstance(maximum, bool) or maximum <= 0:
-            maximum = 10000
-        if len(content) > maximum:
-            raise ComposerError(f"Le message dépasse la limite de {maximum} caractères.")
+        content = self._validated_content(request)
         client, _config = self._client()
         return {"ok": True, "message_id": client.send_direct(recipient_ids, content)}
+
+    def _reply_to_channel(self, row: dict[str, Any], content: str, client: ZulipClient) -> int:
+        stream_id = self._positive_int(row.get("stream_id"))
+        topic = row.get("topic")
+        if stream_id is None or not isinstance(topic, str) or not topic:
+            raise ComposerError("La conversation d’origine est incomplète.")
+        return client.send_stream(stream_id, topic, content)
+
+    def _reply_to_direct(self, row: dict[str, Any], content: str, client: ZulipClient) -> int:
+        self_id = client.test_connection().get("user_id")
+        recipients: list[int] = []
+        for value in [*row.get("recipient_ids", []), row.get("sender_id")]:
+            user_id = self._positive_int(value)
+            if user_id is None or user_id == self_id or user_id in recipients:
+                continue
+            recipients.append(user_id)
+        if not recipients:
+            raise ComposerError("La conversation d’origine est incomplète.")
+        return client.send_direct(recipients, content)
+
+    def reply(self, request: dict[str, Any]) -> dict[str, Any]:
+        row = self._recent_row(request)
+        content = self._validated_content(request)
+        client, _config = self._client()
+        message_id = (
+            self._reply_to_channel(row, content, client)
+            if row.get("type") == "stream"
+            else self._reply_to_direct(row, content, client)
+        )
+        return {"ok": True, "message_id": message_id}
 
     def handle(self, request: dict[str, Any]) -> dict[str, Any]:
         action = request.get("action")
@@ -127,6 +182,8 @@ class ComposerManager:
             return self.directory()
         if action == "send_direct":
             return self.send_direct(request)
+        if action == "reply":
+            return self.reply(request)
         raise ComposerError("Action de composition inconnue.")
 
 

@@ -87,8 +87,15 @@ class ZulipClient:
         members = payload.get("members", [])
         return [member for member in members if isinstance(member, dict)]
 
+    @staticmethod
+    def _sent_message_id(payload: dict[str, Any]) -> int:
+        message_id = payload.get("id")
+        if not isinstance(message_id, int) or message_id <= 0:
+            raise ZulipAPIError("réponse d’envoi Zulip invalide", retryable=False)
+        return message_id
+
     def send_direct(self, recipient_ids: list[int], content: str) -> int:
-        params = {"type": "direct", "to": recipient_ids, "content": content}
+        params: dict[str, Any] = {"type": "direct", "to": recipient_ids, "content": content}
         try:
             payload = self._request("POST", "messages", params)
         except ZulipAPIError as exc:
@@ -100,7 +107,24 @@ class ZulipClient:
                 raise
             params["type"] = "private"
             payload = self._request("POST", "messages", params)
-        message_id = payload.get("id")
-        if not isinstance(message_id, int) or message_id <= 0:
-            raise ZulipAPIError("réponse d’envoi Zulip invalide", retryable=False)
-        return message_id
+        return self._sent_message_id(payload)
+
+    def send_stream(self, stream_id: int, topic: str, content: str) -> int:
+        params: dict[str, Any] = {
+            "type": "stream", "to": stream_id, "topic": topic, "content": content,
+        }
+        try:
+            payload = self._request("POST", "messages", params)
+        except ZulipAPIError as exc:
+            detail = str(exc).casefold()
+            # Zulip nommait ce champ « subject » avant la 2.0. Un rejet portant sur
+            # le canal ou le contenu ne doit pas déclencher ce repli.
+            legacy_topic_rejected = exc.code == "BAD_REQUEST" and (
+                "topic" in detail or "subject" in detail
+            )
+            if not legacy_topic_rejected:
+                raise
+            del params["topic"]
+            params["subject"] = topic
+            payload = self._request("POST", "messages", params)
+        return self._sent_message_id(payload)

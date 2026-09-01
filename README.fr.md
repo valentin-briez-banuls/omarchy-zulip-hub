@@ -1,8 +1,8 @@
 # Zulip Hub pour Omarchy
 
 Zulip Hub intègre à la barre Omarchy les compteurs non lus, les conversations
-récentes, les notifications natives, l’envoi de messages directs et un
-workspace Zulip facultatif. L’interface suit le thème Omarchy et s’utilise
+récentes, les notifications natives, l’envoi de messages directs, la réponse
+dans la conversation d’origine et un workspace Zulip facultatif. L’interface suit le thème Omarchy et s’utilise
 entièrement au clavier.
 
 ![Aperçu de Zulip Hub](preview.png)
@@ -30,7 +30,8 @@ explicitement `Super+Z` pour le panneau et `Super+Maj+Z` pour le workspace.
 
 - `Tab`, flèches ou `j` / `k` : naviguer ;
 - `Entrée` : activer ou ouvrir ;
-- `Ctrl+Entrée` : envoyer un message direct ;
+- `A` : répondre dans la conversation sélectionnée ;
+- `Ctrl+Entrée` : envoyer le message ;
 - `X` : marquer comme lu ; `R` : actualiser ; `Échap` : revenir.
 
 ## Données et sécurité
@@ -38,7 +39,9 @@ explicitement `Super+Z` pour le panneau et `Super+Maj+Z` pour le workspace.
 Le plugin crée uniquement des données appartenant à l’utilisateur sous
 `~/.config/zulip-hub`, `~/.local/state/zulip-hub`, Secret Service et,
 facultativement, `~/.config/hypr/`. La clé API ne figure jamais dans les
-arguments d’un processus, les fichiers ou les journaux.
+arguments d’un processus, les fichiers ou les journaux. Une réponse ne
+transmet qu’un identifiant de message au processus local, qui déduit la
+destination de son propre état.
 
 ## Désinstallation
 

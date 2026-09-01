@@ -3,8 +3,8 @@
 [Version française](README.fr.md)
 
 Zulip Hub brings unread counters, recent conversations, native notifications,
-direct-message composition, and an optional Zulip workspace to the Omarchy
-bar. The interface follows the current Omarchy theme and is fully usable with
+direct-message composition, replies in the original conversation, and an
+optional Zulip workspace to the Omarchy bar. The interface follows the current Omarchy theme and is fully usable with
 the keyboard.
 
 ![Zulip Hub preview](preview.png)
@@ -43,7 +43,8 @@ The control changes only the user-owned Hyprland configuration under
 
 - `Tab`, arrows, or `j` / `k` — navigate
 - `Enter` — activate or open
-- `Ctrl+Enter` — send a direct message
+- `A` — reply in the selected conversation
+- `Ctrl+Enter` — send the message
 - `X` — mark the selected message as read
 - `R` — refresh
 - `Escape` — go back or close
@@ -57,7 +58,9 @@ Zulip Hub creates user-owned data only:
 - Secret Service — the personal API key
 - optionally `~/.config/hypr/zulip_hub.lua` plus one managed include block
 
-Message bodies and drafts are not persisted. Notification content is redacted
+Message bodies and drafts are not persisted. A reply carries only the message
+identifier to the local helper, which resolves the destination from its own
+state, so the interface can never redirect a message. Notification content is redacted
 while the session is locked or when lock state cannot be confirmed.
 
 ## Remove
