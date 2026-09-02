@@ -28,6 +28,7 @@ Panel {
   readonly property var onboarding: onboardingLoader.item || fallbackOnboarding
   readonly property var composer: composerLoader.item || fallbackComposer
   readonly property var reader: readerLoader.item || fallbackReader
+  readonly property var updates: updateLoader.item || fallbackUpdate
   readonly property bool showSetup: onboarding.ready
     && (!onboarding.configured || onboarding.editing)
   readonly property bool showSettings: onboarding.ready && onboarding.configured
@@ -45,6 +46,11 @@ Panel {
   readonly property var onboardingController: onboarding
   readonly property var composerController: composer
   readonly property var readerController: reader
+  readonly property var updateController: updates
+  property var fallbackUpdate: ({
+    available: false, restartNeeded: false, restarting: false,
+    runningVersion: "", installedVersion: "", restartShell: function() {}
+  })
   property var fallbackReader: ({
     available: false, open: false, busy: false, message: null, error: "", destination: "",
     show: function() { return false }, close: function() {}
@@ -158,6 +164,7 @@ Panel {
       appendTarget(rows, diagnosticsBackButton); appendTarget(rows, diagnosticsRefreshButton); appendTarget(rows, reconnectButton)
     } else {
       appendTarget(rows, composeNavButton); appendTarget(rows, settingsNavButton)
+      if (updates.restartNeeded) appendTarget(rows, restartShellButton)
       appendChildren(rows, messageColumn)
     }
     return rows
@@ -327,6 +334,13 @@ Panel {
     active: true
     visible: false
     source: Qt.resolvedUrl("Reader.qml")
+  }
+
+  Loader {
+    id: updateLoader
+    active: true
+    visible: false
+    source: Qt.resolvedUrl("Update.qml")
   }
 
   Connections {
@@ -1180,6 +1194,35 @@ Panel {
             CountPill { label: root.t("total"); count: hub.unread.total }
             CountPill { label: root.t("mentions").toUpperCase(); count: hub.unread.mentions; emphasized: count > 0 }
             CountPill { label: root.t("direct"); count: hub.unread.private }
+          }
+
+          Column {
+            visible: root.showHome && updates.restartNeeded
+            width: parent.width
+            spacing: Style.space(6)
+
+            Text {
+              width: parent.width
+              text: root.t("restartNeeded").replace("%1", updates.installedVersion)
+              textFormat: Text.PlainText
+              wrapMode: Text.WordWrap
+              horizontalAlignment: Text.AlignHCenter
+              color: root.urgent
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.bodySmall
+            }
+
+            Button {
+              id: restartShellButton
+              width: parent.width
+              text: updates.restarting ? root.t("restarting") : root.t("restartNow")
+              enabled: !updates.restarting
+              onClicked: updates.restartShell()
+              hasCursor: root.hasCursor(this)
+              focusable: true
+              function keyboardActivate() { clicked() }
+              onHovered: function(isHovered) { if (isHovered) root.selectTarget(this) }
+            }
           }
 
           Text {

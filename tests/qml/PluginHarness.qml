@@ -132,6 +132,30 @@ ShellRoot {
         Qt.exit(1)
         return
       }
+      if (!plugin.updateController || plugin.updateController.available !== true) {
+        console.error("ZULIP_HUB_UPDATE_NOT_READY")
+        Qt.exit(1)
+        return
+      }
+      plugin.updateController.runningVersion = "2.2.1"
+      plugin.updateController.installedVersion = "2.2.1"
+      if (plugin.updateController.restartNeeded) {
+        console.error("ZULIP_HUB_RESTART_FALSE_ALARM")
+        Qt.exit(1)
+        return
+      }
+      plugin.updateController.installedVersion = "2.3.0"
+      if (!plugin.updateController.restartNeeded) {
+        console.error("ZULIP_HUB_RESTART_NOT_DETECTED")
+        Qt.exit(1)
+        return
+      }
+      plugin.updateController.installedVersion = "2.2.1"
+      if (plugin.updateController.restartNeeded) {
+        console.error("ZULIP_HUB_RESTART_STUCK")
+        Qt.exit(1)
+        return
+      }
       if (expectOffline) {
         if (plugin.hub.loaded || plugin.hub.connected || plugin.hub.statusText === "") {
           console.error("ZULIP_HUB_OFFLINE_STATE_MISMATCH")

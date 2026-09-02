@@ -39,6 +39,10 @@ immédiatement, mais Omarchy conserve le composant déjà chargé d'un widget de
 barre tant que l'URL du plugin ne change pas : l'interface ne change donc
 qu'après le redémarrage du shell.
 
+Le panneau s'en aperçoit tout seul : lorsque le shell est en retard sur les
+fichiers installés, il affiche un bandeau avec un bouton **Redémarrer
+maintenant**. La seconde commande n'est là que pour qui préfère le terminal.
+
 ## Utilisation au clavier
 
 - `Tab`, flèches ou `j` / `k` : naviguer ;

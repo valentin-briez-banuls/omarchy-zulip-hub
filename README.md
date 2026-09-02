@@ -50,6 +50,10 @@ The restart is not optional. The bridge picks up a new version straight away,
 but Omarchy keeps a bar widget's loaded component when the plugin URL has not
 changed, so the interface only changes once the shell restarts.
 
+The panel notices this on its own: when the shell is behind the installed
+files it shows a banner with a **Restart now** button, so the second command
+is only there for those who prefer the terminal.
+
 ## Keyboard controls
 
 - `Tab`, arrows, or `j` / `k` — navigate

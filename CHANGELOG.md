@@ -1,5 +1,13 @@
 # Historique des versions
 
+## 2.3.0 — 2026-09-02
+
+- Le panneau signale lui-même qu'une mise à jour est installée mais pas encore
+  chargée, et propose un bouton pour redémarrer Omarchy Shell. La version lue
+  au premier chargement est celle qui tourne réellement ; toute valeur
+  différente lue ensuite vient du disque et révèle l'écart, sans qu'aucune
+  version n'ait à être écrite en dur.
+
 ## 2.2.1 — 2026-09-02
 
 - La liste des touches passe à la ligne au lieu d'être coupée aux deux bouts :
