@@ -39,6 +39,17 @@ The optional **Omarchy integration** control in Settings adds:
 The control changes only the user-owned Hyprland configuration under
 `~/.config/hypr/` after explicit activation.
 
+## Update
+
+```sh
+omarchy plugin update io.github.valentin-briez-banuls.zulip-hub
+omarchy-restart-shell
+```
+
+The restart is not optional. The bridge picks up a new version straight away,
+but Omarchy keeps a bar widget's loaded component when the plugin URL has not
+changed, so the interface only changes once the shell restarts.
+
 ## Keyboard controls
 
 - `Tab`, arrows, or `j` / `k` — navigate

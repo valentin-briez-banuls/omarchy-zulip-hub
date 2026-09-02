@@ -1,5 +1,14 @@
 # Historique des versions
 
+## 2.2.1 — 2026-09-02
+
+- La liste des touches passe à la ligne au lieu d'être coupée aux deux bouts :
+  elle dépassait la largeur du panneau depuis l'ajout de `O`.
+- Procédure de mise à jour documentée. `omarchy plugin update` ne recharge pas
+  le composant du widget tant que l'URL du plugin ne change pas : le bridge
+  prend la nouvelle version tout de suite, l'interface seulement après un
+  `omarchy-restart-shell`.
+
 ## 2.2.0 — 2026-09-02
 
 - `Entrée` affiche désormais le message dans le panneau au lieu d'ouvrir la

@@ -1269,6 +1269,9 @@ Panel {
             width: parent.width
             text: root.t("homeHelp")
             textFormat: Text.PlainText
+            // La liste des touches depasse la largeur du panneau : elle doit
+            // passer a la ligne plutot que d etre coupee aux deux bouts.
+            wrapMode: Text.WordWrap
             horizontalAlignment: Text.AlignHCenter
             color: root.dim
             font.family: root.fontFamily

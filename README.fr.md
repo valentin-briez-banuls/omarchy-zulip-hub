@@ -27,6 +27,18 @@ compte et la clé API. Aucun terminal n’est nécessaire après l’ajout du pl
 Dans **Réglages → Intégration Omarchy**, l’utilisateur peut autoriser
 explicitement `Super+Z` pour le panneau et `Super+Maj+Z` pour le workspace.
 
+## Mise à jour
+
+```sh
+omarchy plugin update io.github.valentin-briez-banuls.zulip-hub
+omarchy-restart-shell
+```
+
+Le redémarrage n'est pas facultatif. Le bridge prend la nouvelle version
+immédiatement, mais Omarchy conserve le composant déjà chargé d'un widget de
+barre tant que l'URL du plugin ne change pas : l'interface ne change donc
+qu'après le redémarrage du shell.
+
 ## Utilisation au clavier
 
 - `Tab`, flèches ou `j` / `k` : naviguer ;
