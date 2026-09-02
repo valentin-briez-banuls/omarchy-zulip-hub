@@ -12,6 +12,13 @@ from .state import HubState, StateReducer, StateStore, utc_now
 
 LOGGER = logging.getLogger("zulip_hub")
 
+# Attente entre deux tentatives après un refus définitif du serveur. Quitter
+# ferait relancer le bridge par le service toutes les cinq secondes, et chaque
+# relance rappellerait l’API : une clé révoquée suffirait alors à solliciter le
+# compte une douzaine de fois par minute, indéfiniment. Le bridge reste donc en
+# vie, presque silencieux, et repart de lui-même si la situation se dénoue.
+IDLE_RETRY_SECONDS = 900
+
 
 class BridgeDaemon:
     def __init__(
@@ -91,8 +98,13 @@ class BridgeDaemon:
                     continue
                 self._record_error(str(exc))
                 if not exc.retryable:
-                    LOGGER.error("erreur Zulip non récupérable: %s", exc)
-                    return
+                    LOGGER.error(
+                        "erreur Zulip non récupérable: %s; nouvelle tentative dans %ds",
+                        exc, IDLE_RETRY_SECONDS,
+                    )
+                    self.sleep(max(IDLE_RETRY_SECONDS, delay))
+                    queue_id = None
+                    continue
                 LOGGER.warning("connexion impossible; nouvel essai dans %.1fs", delay)
                 self.sleep(delay)
                 backoff = min(self.max_backoff, backoff * 2)

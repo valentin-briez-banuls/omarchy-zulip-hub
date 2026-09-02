@@ -1,5 +1,18 @@
 # Historique des versions
 
+## 2.4.3 — 2026-09-02
+
+- **Un refus définitif du serveur ne relance plus le bridge en boucle.** Sur
+  une erreur non récupérable — une clé révoquée répond 401, classé non
+  récupérable — le bridge sortait, et le service Quickshell le relançait cinq
+  secondes plus tard, indéfiniment : environ 720 appels API par heure sur le
+  compte, pour une erreur qui ne se résout pas d'elle-même. C'est la même
+  famille de problème que la boucle sans temporisation corrigée en 2.1.2. Le
+  bridge reste désormais en vie, inscrit la raison dans l'état local pour que
+  le panneau l'affiche, et retente au quart d'heure : **4 appels par heure au
+  lieu de 720**. La reconnexion du compte depuis les réglages le relance
+  immédiatement, sans attendre.
+
 ## 2.4.2 — 2026-09-02
 
 Dernières exigences de la revue de sécurité, relevées en relisant le message
