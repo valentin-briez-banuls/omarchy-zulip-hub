@@ -1,9 +1,16 @@
 import fcntl
+import os
 from pathlib import Path
 import tempfile
 import unittest
 
-from zulip_hub.files import is_managed_module, single_instance
+from zulip_hub.files import (
+    is_managed_module,
+    open_directory,
+    single_instance,
+    write_exclusive,
+    write_no_follow,
+)
 
 
 class ManagedModuleTests(unittest.TestCase):
@@ -37,6 +44,49 @@ class ManagedModuleTests(unittest.TestCase):
     def test_a_directory_is_never_treated_as_ours(self):
         self.module.mkdir()
         self.assertFalse(is_managed_module(self.module))
+
+
+class ParentDirectoryTests(unittest.TestCase):
+    """Protéger le seul dernier segment laisse écrire à travers un parent
+    remplacé par un lien."""
+
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.base = Path(self.temporary.name)
+        self.real = self.base / "ailleurs"
+        self.real.mkdir()
+        (self.real / "zulip_hub.lua").write_text("intact", encoding="utf-8")
+        self.link = self.base / "hypr"
+        self.link.symlink_to(self.real)
+
+    def tearDown(self):
+        self.temporary.cleanup()
+
+    def test_writing_through_a_symlinked_parent_is_refused(self):
+        with self.assertRaises(OSError):
+            write_no_follow(self.link / "zulip_hub.lua", b"traverse")
+        self.assertEqual((self.real / "zulip_hub.lua").read_text(encoding="utf-8"), "intact")
+
+    def test_creating_through_a_symlinked_parent_is_refused(self):
+        with self.assertRaises(OSError):
+            write_exclusive(self.link / "nouveau.lua", b"traverse")
+        self.assertFalse((self.real / "nouveau.lua").exists())
+
+    def test_a_real_parent_still_works(self):
+        write_no_follow(self.real / "zulip_hub.lua", b"remplace")
+        self.assertEqual((self.real / "zulip_hub.lua").read_text(encoding="utf-8"), "remplace")
+
+    def test_a_directory_walk_refuses_a_symlinked_component(self):
+        with self.assertRaises(OSError):
+            descriptor = open_directory(self.base, "hypr")
+            os.close(descriptor)
+
+    def test_a_directory_walk_accepts_real_components(self):
+        descriptor = open_directory(self.base, "ailleurs")
+        try:
+            self.assertGreaterEqual(descriptor, 0)
+        finally:
+            os.close(descriptor)
 
 
 class SingleInstanceTests(unittest.TestCase):

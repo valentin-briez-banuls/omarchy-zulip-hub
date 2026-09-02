@@ -69,6 +69,14 @@ class APITests(unittest.TestCase):
             with self.assertRaisesRegex(ZulipAPIError, "volumineuse"):
                 client.test_connection()
 
+    def test_a_deeply_nested_response_is_refused_without_recursing(self):
+        client = ZulipClient("https://chat.example.com", "me@example.com", "top-secret")
+        nested = b"[" * 100000 + b"]" * 100000
+        with patch.object(client, "_opener") as opener:
+            opener.open.return_value.__enter__.return_value.read.return_value = nested
+            with self.assertRaises(ZulipAPIError):
+                client.test_connection()
+
     def test_an_oversized_error_body_is_refused(self):
         from zulip_hub.limits import MAX_RESPONSE_BYTES
         client = ZulipClient("https://chat.example.com", "me@example.com", "top-secret")

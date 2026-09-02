@@ -1,5 +1,24 @@
 # Historique des versions
 
+## 2.4.1 — 2026-09-02
+
+Compléments à la revue de sécurité : trois exigences du relecteur n'étaient
+que partiellement traitées en 2.4.0.
+
+- **Profondeur d'imbrication.** Une charge de 200 Ko — très en deçà de la
+  borne en octets — suffisait à faire tomber le bridge sur `RecursionError`,
+  que rien n'attrapait. La profondeur est désormais mesurée sur les octets
+  bruts, par un parcours itératif, avant toute analyse.
+- **Borne agrégée.** Les bornes par champ ne s'additionnent pas : l'annuaire
+  pouvait émettre jusqu'à 39 Mo vers l'interface. Son pire cas tombe à 269 Ko,
+  et l'état écrit sur disque tient un budget explicite en abandonnant les
+  conversations les plus anciennes.
+- **Écriture relative à un descripteur.** `O_NOFOLLOW` ne protégeait que le
+  dernier segment : un répertoire parent remplacé par un lien détournait
+  l'écriture vers sa cible. Le parent est maintenant ouvert lui-même sans
+  suivre de lien, et une descente segment par segment est disponible pour les
+  chemins de confiance.
+
 ## 2.4.0 — 2026-09-02
 
 Revue de sécurité de la place de marché Omarchy : cinq points corrigés.

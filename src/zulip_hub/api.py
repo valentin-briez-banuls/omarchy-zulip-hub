@@ -7,7 +7,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
-from .limits import MAX_RESPONSE_BYTES
+from .limits import MAX_RESPONSE_BYTES, exceeds_depth
 
 
 class ZulipAPIError(RuntimeError):
@@ -76,6 +76,8 @@ def _decoded(raw: bytes) -> Any:
     """JSON d’une réponse déjà bornée en octets."""
     if len(raw) > MAX_RESPONSE_BYTES:
         raise ZulipAPIError("réponse Zulip trop volumineuse", retryable=False)
+    if exceeds_depth(raw):
+        raise ZulipAPIError("réponse Zulip trop imbriquée", retryable=False)
     try:
         return json.loads(raw.decode("utf-8"))
     except (ValueError, UnicodeDecodeError) as exc:

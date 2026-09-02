@@ -70,22 +70,24 @@ class ComposerTests(unittest.TestCase):
 
     @patch("zulip_hub.composer.ZulipClient")
     def test_the_directory_cannot_be_flooded_by_the_server(self, client_class):
-        from zulip_hub.limits import MAX_COLLECTION, MAX_TEXT
+        from zulip_hub.limits import MAX_DIRECTORY, MAX_NAME, MAX_PAYLOAD_BYTES
         client = client_class.return_value
         client.test_connection.return_value = {"user_id": 1}
         client.users.return_value = [
             {
                 "user_id": index + 2,
-                "full_name": "N" * (MAX_TEXT * 3),
-                "email": "E" * (MAX_TEXT * 3),
+                "full_name": "N" * (MAX_NAME * 10),
+                "email": "E" * (MAX_NAME * 10),
                 "is_active": True,
             }
-            for index in range(MAX_COLLECTION * 2)
+            for index in range(MAX_DIRECTORY * 3)
         ]
         result = ComposerManager(self.config, self.state, self.secrets).directory()
-        self.assertEqual(len(result["users"]), MAX_COLLECTION)
-        self.assertEqual(len(result["users"][0]["full_name"]), MAX_TEXT)
-        self.assertEqual(len(result["users"][0]["email"]), MAX_TEXT)
+        self.assertEqual(len(result["users"]), MAX_DIRECTORY)
+        self.assertEqual(len(result["users"][0]["full_name"]), MAX_NAME)
+        self.assertEqual(len(result["users"][0]["email"]), MAX_NAME)
+        encoded = json.dumps(result, ensure_ascii=False).encode("utf-8")
+        self.assertLessEqual(len(encoded), MAX_PAYLOAD_BYTES)
 
     def test_send_rejects_missing_recipient_empty_and_oversized_content(self):
         manager = ComposerManager(self.config, self.state, self.secrets)

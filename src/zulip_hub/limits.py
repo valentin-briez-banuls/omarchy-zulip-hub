@@ -10,9 +10,54 @@ from typing import Any
 MAX_RESPONSE_BYTES = 4 * 1024 * 1024
 MAX_TEXT = 4096
 MAX_COLLECTION = 5000
+
+# Une charge peu volumineuse peut être arbitrairement imbriquée : la borne en
+# octets ne dit rien de la profondeur, et l’analyseur JSON entre en récursion
+# bien avant d’atteindre le mégaoctet.
+MAX_DEPTH = 64
+
+# Bornes de l’annuaire : un nom et une adresse n’ont pas besoin de la taille
+# d’un texte libre, et leur produit par le nombre d’entrées doit rester très
+# en deçà du budget d’émission.
+MAX_DIRECTORY = 500
+MAX_NAME = 256
+
+# Taille d’une charge sérialisée, écrite dans l’état ou émise vers
+# l’interface. Les bornes par champ ne s’additionnent pas toutes seules.
+MAX_PAYLOAD_BYTES = 512 * 1024
 MAX_MESSAGE_LENGTH = 1_000_000
 MAX_TIMEOUT_SECONDS = 600
 MAX_BACKOFF_SECONDS = 3600
+
+
+def exceeds_depth(raw: bytes, limit: int = MAX_DEPTH) -> bool:
+    """Profondeur d’imbrication mesurée sur les octets bruts.
+
+    Le parcours est itératif et ignore les crochets contenus dans les chaînes :
+    il doit pouvoir juger une charge hostile sans jamais faire ce que
+    l’analyseur ferait, c’est-à-dire récurser.
+    """
+    depth = 0
+    in_string = False
+    escaped = False
+    for byte in raw:
+        if in_string:
+            if escaped:
+                escaped = False
+            elif byte == 0x5C:
+                escaped = True
+            elif byte == 0x22:
+                in_string = False
+            continue
+        if byte == 0x22:
+            in_string = True
+        elif byte in (0x5B, 0x7B):
+            depth += 1
+            if depth > limit:
+                return True
+        elif byte in (0x5D, 0x7D):
+            depth -= 1
+    return False
 
 
 def bounded_text(value: Any, limit: int = MAX_TEXT) -> str:

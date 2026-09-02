@@ -61,6 +61,23 @@ class StateTests(unittest.TestCase):
         reducer.initialized({"unread_msgs": {}, "max_message_length": float("nan")})
         self.assertEqual(reducer.state.max_message_length, 10000)
 
+    def test_the_written_state_stays_within_an_aggregate_budget(self):
+        from zulip_hub.limits import MAX_PAYLOAD_BYTES, MAX_TEXT
+        reducer = StateReducer(limit=200)
+        for index in range(200):
+            reducer.apply({"type": "message", "message": {
+                "id": index, "type": "stream",
+                "sender_full_name": "A" * MAX_TEXT,
+                "display_recipient": "B" * MAX_TEXT,
+                "subject": "C" * MAX_TEXT,
+                "sender_id": 7, "stream_id": 9, "timestamp": 10, "flags": [],
+            }})
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "state.json"
+            StateStore(path).write(reducer.state)
+            self.assertLessEqual(path.stat().st_size, MAX_PAYLOAD_BYTES)
+            self.assertTrue(json.loads(path.read_text())["recent"])
+
     def test_read_flags_never_make_count_negative(self):
         reducer = StateReducer()
         reducer.apply({"type": "update_message_flags", "flag": "read", "operation": "add", "messages": [1, 2]})

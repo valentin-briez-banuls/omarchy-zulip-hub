@@ -2,11 +2,34 @@ import unittest
 
 from zulip_hub.limits import (
     MAX_COLLECTION,
+    MAX_DEPTH,
     MAX_TEXT,
     bounded_list,
     bounded_text,
     clamped_number,
+    exceeds_depth,
 )
+
+
+class DepthTests(unittest.TestCase):
+    """Une charge peu volumineuse peut être arbitrairement imbriquée : la
+    borne en octets ne dit rien de la profondeur, et l’analyseur JSON entre
+    en récursion."""
+
+    def test_an_ordinary_payload_passes(self):
+        self.assertFalse(exceeds_depth(b'{"a": [1, 2, {"b": []}]}'))
+
+    def test_a_deeply_nested_payload_is_detected(self):
+        self.assertTrue(exceeds_depth(b"[" * (MAX_DEPTH + 5) + b"]" * (MAX_DEPTH + 5)))
+
+    def test_brackets_inside_strings_do_not_count(self):
+        self.assertFalse(exceeds_depth(b'{"a": "[[[[[[[[[[[[[[[[[[[[[[[["}'))
+
+    def test_an_escaped_quote_does_not_end_the_string(self):
+        self.assertFalse(exceeds_depth(b'{"a": "\\\"[[[[[[[[[[[[[[[[[[[[[[["}'))
+
+    def test_the_depth_limit_stays_modest(self):
+        self.assertLessEqual(MAX_DEPTH, 128)
 
 
 class LimitTests(unittest.TestCase):

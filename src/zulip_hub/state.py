@@ -10,6 +10,7 @@ import tempfile
 
 from .limits import (
     MAX_MESSAGE_LENGTH,
+    MAX_PAYLOAD_BYTES,
     bounded_list,
     bounded_text,
     clamped_number,
@@ -44,9 +45,25 @@ class StateStore:
     def __init__(self, path: Path):
         self.path = path
 
+    @staticmethod
+    def _within_budget(state: HubState) -> str:
+        """Sérialisation de l’état, ramenée sous le budget d’écriture.
+
+        Les bornes par champ ne s’additionnent pas : c’est ici que la taille
+        totale est tenue, en abandonnant les conversations les plus anciennes.
+        """
+        payload = asdict(state)
+        recent = list(payload.get("recent", []))
+        while True:
+            data = json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "\n"
+            if len(data.encode("utf-8")) <= MAX_PAYLOAD_BYTES or not recent:
+                return data
+            recent = recent[: max(1, len(recent) // 2)] if len(recent) > 1 else []
+            payload["recent"] = recent
+
     def write(self, state: HubState) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        data = json.dumps(asdict(state), ensure_ascii=False, separators=(",", ":")) + "\n"
+        data = self._within_budget(state)
         fd, temporary = tempfile.mkstemp(prefix=".state-", dir=self.path.parent, text=True)
         try:
             os.fchmod(fd, 0o600)

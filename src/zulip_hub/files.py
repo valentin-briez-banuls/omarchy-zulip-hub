@@ -41,26 +41,59 @@ def is_managed_module(path: Path) -> bool:
         return False
 
 
-def write_no_follow(path: Path, data: bytes, mode: int = 0o644) -> None:
-    """Écrit *path* sans jamais suivre un lien symbolique au dernier segment."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, mode)
+def open_directory(root: Path, *parts: str) -> int:
+    """Descripteur d’un répertoire atteint sans jamais suivre de lien.
+
+    Chaque segment est ouvert relativement au précédent avec ``O_NOFOLLOW`` :
+    un répertoire intermédiaire remplacé par un lien fait échouer la descente
+    au lieu de la détourner ailleurs.
+    """
+    descriptor = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
     try:
-        os.write(descriptor, data)
-    finally:
+        for part in parts:
+            nested = os.open(
+                part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=descriptor,
+            )
+            os.close(descriptor)
+            descriptor = nested
+    except BaseException:
         os.close(descriptor)
+        raise
+    return descriptor
+
+
+def _write_relative(path: Path, data: bytes, flags: int, mode: int) -> None:
+    """Écrit dans le répertoire parent ouvert lui-même sans suivre de lien.
+
+    Protéger le seul dernier segment ne suffit pas : un parent remplacé par un
+    lien détournerait l’écriture, ``O_NOFOLLOW`` ne s’appliquant qu’au segment
+    final du chemin ouvert.
+    """
+    parent = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        descriptor = os.open(path.name, flags, mode, dir_fd=parent)
+        try:
+            os.write(descriptor, data)
+        finally:
+            os.close(descriptor)
+    finally:
+        os.close(parent)
+
+
+def write_no_follow(path: Path, data: bytes, mode: int = 0o644) -> None:
+    """Écrit *path* sans suivre de lien, ni au dernier segment ni au parent."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _write_relative(
+        path, data, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, mode,
+    )
 
 
 def write_exclusive(path: Path, data: bytes, mode: int = 0o600) -> None:
     """Crée *path*, en échouant s’il existe déjà, fût-ce sous forme de lien."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    descriptor = os.open(
-        path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, mode,
+    _write_relative(
+        path, data, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, mode,
     )
-    try:
-        os.write(descriptor, data)
-    finally:
-        os.close(descriptor)
 
 
 @contextmanager
