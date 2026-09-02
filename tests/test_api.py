@@ -2,6 +2,7 @@ import base64
 from io import BytesIO
 import unittest
 from unittest.mock import patch
+from urllib.error import HTTPError
 from urllib.parse import parse_qs
 
 from zulip_hub.api import ZulipAPIError, ZulipClient
@@ -15,6 +16,31 @@ class APITests(unittest.TestCase):
             client.headers["Authorization"],
             "Basic " + base64.b64encode(b"me@example.com:top-secret").decode(),
         )
+
+    def test_a_rate_limited_response_carries_the_delay_the_server_asked_for(self):
+        client = ZulipClient("https://chat.example.com", "me@example.com", "top-secret")
+        body = b'{"result":"error","msg":"limite","code":"RATE_LIMIT_HIT","retry-after":12.5}'
+        refusal = HTTPError(
+            "https://chat.example.com/api/v1/events", 429, "Too Many Requests",
+            {}, BytesIO(body),
+        )
+        with patch("zulip_hub.api.urlopen", side_effect=refusal):
+            with self.assertRaises(ZulipAPIError) as raised:
+                client.test_connection()
+        self.assertEqual(raised.exception.code, "RATE_LIMIT_HIT")
+        self.assertTrue(raised.exception.retryable)
+        self.assertEqual(raised.exception.retry_after, 12.5)
+
+    def test_an_ordinary_failure_carries_no_retry_delay(self):
+        client = ZulipClient("https://chat.example.com", "me@example.com", "top-secret")
+        refusal = HTTPError(
+            "https://chat.example.com/api/v1/events", 400, "Bad Request",
+            {}, BytesIO(b'{"result":"error","msg":"non","code":"BAD_REQUEST"}'),
+        )
+        with patch("zulip_hub.api.urlopen", side_effect=refusal):
+            with self.assertRaises(ZulipAPIError) as raised:
+                client.test_connection()
+        self.assertIsNone(raised.exception.retry_after)
 
     def test_mark_read_uses_personal_message_flags_endpoint(self):
         client = ZulipClient("https://chat.example.com", "me@example.com", "top-secret")

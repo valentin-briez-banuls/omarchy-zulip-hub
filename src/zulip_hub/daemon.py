@@ -37,6 +37,19 @@ class BridgeDaemon:
     def stop(self, *_args) -> None:
         self.running = False
 
+    def _delay_for(self, backoff: float, exc: ZulipAPIError) -> float:
+        """Temporisation avant un nouvel essai, jamais nulle.
+
+        Un chemin sans attente transforme une file rejetee en boucle serree sur
+        l API, et le quota est celui du compte, partage avec le client Zulip.
+        Un delai reclame par le serveur prime sur le report exponentiel.
+        """
+        delay = min(self.max_backoff, backoff) * random.uniform(0.8, 1.2)
+        requested = getattr(exc, "retry_after", None)
+        if isinstance(requested, (int, float)) and not isinstance(requested, bool):
+            delay = max(delay, float(requested))
+        return delay
+
     def run(self) -> None:
         signal.signal(signal.SIGTERM, self.stop)
         signal.signal(signal.SIGINT, self.stop)
@@ -69,15 +82,17 @@ class BridgeDaemon:
                 self.store.write(self.reducer.state)
                 backoff = self.initial_backoff
             except ZulipAPIError as exc:
+                delay = self._delay_for(backoff, exc)
                 if exc.code == "BAD_EVENT_QUEUE_ID":
-                    LOGGER.warning("file d'événements expirée, réinitialisation")
+                    LOGGER.warning("file d'événements expirée; réenregistrement dans %.1fs", delay)
+                    self.sleep(delay)
+                    backoff = min(self.max_backoff, backoff * 2)
                     queue_id = None
                     continue
                 self._record_error(str(exc))
                 if not exc.retryable:
                     LOGGER.error("erreur Zulip non récupérable: %s", exc)
                     return
-                delay = min(self.max_backoff, backoff) * random.uniform(0.8, 1.2)
                 LOGGER.warning("connexion impossible; nouvel essai dans %.1fs", delay)
                 self.sleep(delay)
                 backoff = min(self.max_backoff, backoff * 2)

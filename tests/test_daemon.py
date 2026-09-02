@@ -36,7 +36,58 @@ class FakeNotifier:
             self.messages.append(event["message"])
 
 
+class AlwaysExpiredClient:
+    """Rejette chaque interrogation : le cas qui bouclait sans temporisation."""
+
+    def __init__(self, stop_after: int):
+        self.registrations = 0
+        self.stop_after = stop_after
+        self.daemon = None
+
+    def register(self):
+        self.registrations += 1
+        if self.daemon is not None and self.registrations > self.stop_after:
+            self.daemon.running = False
+        return {"queue_id": "q", "last_event_id": 0, "unread_msgs": {}}
+
+    def events(self, queue_id, last_event_id):
+        raise ZulipAPIError("expired", code="BAD_EVENT_QUEUE_ID")
+
+
+class RateLimitedClient(AlwaysExpiredClient):
+    def events(self, queue_id, last_event_id):
+        raise ZulipAPIError(
+            "limite", code="RATE_LIMIT_HIT", retryable=True, retry_after=30,
+        )
+
+
 class DaemonTests(unittest.TestCase):
+    def _run_until_stopped(self, client, **options):
+        delays = []
+        with tempfile.TemporaryDirectory() as directory:
+            daemon = BridgeDaemon(
+                client, StateStore(Path(directory) / "state.json"), StateReducer(),
+                sleep=delays.append, **options,
+            )
+            client.daemon = daemon
+            daemon.run()
+        return delays
+
+    def test_a_queue_rejected_over_and_over_backs_off_instead_of_hammering(self):
+        delays = self._run_until_stopped(
+            AlwaysExpiredClient(stop_after=6), initial_backoff=1, max_backoff=60,
+        )
+        self.assertTrue(delays, "le reenregistrement na attendu a aucun moment")
+        self.assertGreater(delays[-1], delays[0])
+
+    def test_a_rate_limited_poll_waits_at_least_the_delay_the_server_asked_for(self):
+        delays = self._run_until_stopped(
+            RateLimitedClient(stop_after=3), initial_backoff=1, max_backoff=60,
+        )
+        self.assertTrue(delays)
+        self.assertTrue(all(delay >= 30 for delay in delays), delays)
+
+
     def test_expired_queue_is_registered_again(self):
         with tempfile.TemporaryDirectory() as directory:
             client = FakeClient()

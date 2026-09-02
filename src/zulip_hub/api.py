@@ -9,10 +9,29 @@ from urllib.request import Request, urlopen
 
 
 class ZulipAPIError(RuntimeError):
-    def __init__(self, message: str, *, code: str | None = None, retryable: bool = True):
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str | None = None,
+        retryable: bool = True,
+        retry_after: float | None = None,
+    ):
         super().__init__(message)
         self.code = code
         self.retryable = retryable
+        # Delai reclame par le serveur, en secondes. Le respecter evite de
+        # consommer le quota du compte, partage avec le client Zulip.
+        self.retry_after = retry_after
+
+
+def _retry_after(body: object) -> float | None:
+    if not isinstance(body, dict):
+        return None
+    value = body.get("retry-after")
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0:
+        return None
+    return float(value)
 
 
 class ZulipClient:
@@ -39,20 +58,31 @@ class ZulipClient:
                 payload = json.load(response)
         except HTTPError as exc:
             code = None
+            delay = None
             message = f"erreur HTTP Zulip {exc.code}"
             try:
                 body = json.loads(exc.read().decode())
                 code = body.get("code")
                 message = body.get("msg", message)
+                delay = _retry_after(body)
             except (ValueError, UnicodeDecodeError):
                 pass
-            raise ZulipAPIError(message, code=code, retryable=exc.code >= 500 or exc.code == 429) from exc
+            raise ZulipAPIError(
+                message,
+                code=code,
+                retryable=exc.code >= 500 or exc.code == 429,
+                retry_after=delay,
+            ) from exc
         except (URLError, TimeoutError, OSError) as exc:
             raise ZulipAPIError("serveur Zulip inaccessible", retryable=True) from exc
         except (ValueError, UnicodeDecodeError) as exc:
             raise ZulipAPIError("réponse Zulip invalide", retryable=True) from exc
         if payload.get("result") == "error":
-            raise ZulipAPIError(payload.get("msg", "erreur API Zulip"), code=payload.get("code"))
+            raise ZulipAPIError(
+                payload.get("msg", "erreur API Zulip"),
+                code=payload.get("code"),
+                retry_after=_retry_after(payload),
+            )
         return payload
 
     def register(self) -> dict[str, Any]:

@@ -1,5 +1,15 @@
 # Historique des versions
 
+## 2.1.2 — 2026-09-02
+
+- Plus aucun nouvel essai immédiat. Une file d'événements rejetée relançait
+  l'enregistrement sans la moindre temporisation, seul chemin d'erreur du
+  bridge à ne pas appliquer de report exponentiel. Répété, il consommait le
+  quota d'API du compte — le même que celui du client Zulip, qui se retrouvait
+  alors bloqué en `RATE_LIMIT_HIT`.
+- Le délai réclamé par le serveur est désormais lu dans la réponse et
+  respecté, y compris au-delà du report maximal, plutôt qu'ignoré.
+
 ## 2.1.1 — 2026-09-02
 
 - Un seul bridge à la fois. Le shell peut tenir deux instances du service du
