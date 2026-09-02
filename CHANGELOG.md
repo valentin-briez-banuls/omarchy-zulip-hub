@@ -1,5 +1,14 @@
 # Historique des versions
 
+## 2.1.1 — 2026-09-02
+
+- Un seul bridge à la fois. Le shell peut tenir deux instances du service du
+  plugin en vie simultanément — observé après `omarchy plugin update`, qui
+  charge la nouvelle avant de détruire l'ancienne. Les deux ouvraient alors
+  chacune une file d'événements Zulip et les notifications arrivaient en
+  double. Un verrou exclusif fait patienter le second bridge, qui prend le
+  relais de lui-même si le premier s'arrête.
+
 ## 2.1.0 — 2026-09-02
 
 - Réponse depuis le panneau : `A` ou le bouton ↩ répond dans la conversation

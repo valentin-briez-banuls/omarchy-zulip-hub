@@ -1,3 +1,4 @@
+import fcntl
 import json
 from pathlib import Path
 import tempfile
@@ -76,6 +77,32 @@ class CLITests(unittest.TestCase):
         result = main(["os-integration", "status"])
         self.assertEqual(result, 0)
         run_action.assert_called_once_with(Path(__file__).resolve().parents[1], "status")
+
+    @patch("zulip_hub.cli.NotificationCoordinator")
+    @patch("zulip_hub.cli.BridgeDaemon")
+    @patch("zulip_hub.cli.ZulipClient")
+    @patch("zulip_hub.cli.SecretToolProvider.get", return_value="test-key")
+    def test_the_daemon_holds_the_single_instance_lock_while_it_runs(
+        self, _secret, _client, daemon_class, _notifier,
+    ):
+        observed = {}
+
+        def inspect_lock():
+            with open(self.state.parent / "bridge.lock", "a", encoding="utf-8") as other:
+                try:
+                    fcntl.flock(other, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except OSError:
+                    observed["held"] = True
+                    return
+                fcntl.flock(other, fcntl.LOCK_UN)
+                observed["held"] = False
+
+        daemon_class.return_value.run.side_effect = inspect_lock
+        result = main([
+            "--config", str(self.config), "--state", str(self.state), "daemon",
+        ])
+        self.assertEqual(result, 0)
+        self.assertTrue(observed.get("held"), "le daemon ne detient pas le verrou")
 
     @patch("zulip_hub.cli.serve_composer_once", return_value=0)
     def test_compose_routes_to_private_stdin_protocol(self, serve):

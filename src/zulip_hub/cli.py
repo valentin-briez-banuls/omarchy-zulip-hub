@@ -11,6 +11,7 @@ from .api import ZulipClient
 from .config import ConfigError, Paths, load_config
 from .composer import serve_once as serve_composer_once
 from .daemon import BridgeDaemon
+from .files import single_instance
 from .links import LinkError, summary_url
 from .marketplace import IntegrationError, run_action
 from .hyprland import HyprlandController, HyprlandError, resolve_launch_command
@@ -117,14 +118,15 @@ def main(argv: list[str] | None = None) -> int:
         notifier = NotificationCoordinator(
             config.account.site, config.account.email, config.notifications
         )
-        BridgeDaemon(
-            client,
-            StateStore(state_path),
-            StateReducer(config.recent_message_limit),
-            config.initial_backoff_seconds,
-            config.max_backoff_seconds,
-            notifier=notifier,
-        ).run()
+        with single_instance(state_path.parent / "bridge.lock"):
+            BridgeDaemon(
+                client,
+                StateStore(state_path),
+                StateReducer(config.recent_message_limit),
+                config.initial_backoff_seconds,
+                config.max_backoff_seconds,
+                notifier=notifier,
+            ).run()
         return 0
     except (
         ConfigError, SecretError, OpenError, LinkError, HyprlandError, IntegrationError,
