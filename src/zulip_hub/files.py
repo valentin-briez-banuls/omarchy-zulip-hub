@@ -6,7 +6,6 @@ import fcntl
 import os
 from pathlib import Path
 import stat
-import tempfile
 
 
 BEGIN = "-- BEGIN omarchy-zulip-hub (managed)"
@@ -116,16 +115,33 @@ def single_instance(path: Path) -> Iterator[None]:
 
 
 def write_atomic(path: Path, content: str, mode: int | None = None) -> None:
+    """Remplace *path* d’un seul tenant, sans suivre de lien.
+
+    Le fichier temporaire est créé et publié relativement au répertoire parent,
+    lui-même ouvert sans suivre de lien : un parent remplacé fait échouer
+    l’écriture au lieu de la détourner vers sa cible.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
-    descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
-    temporary = Path(temporary_name)
+    parent = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    temporary = f".{path.name}.{os.getpid()}.{os.urandom(6).hex()}"
     try:
-        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
-            stream.write(content)
-            stream.flush()
-            os.fsync(stream.fileno())
-        if mode is not None:
-            temporary.chmod(mode)
-        temporary.replace(path)
+        descriptor = os.open(
+            temporary,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+            0o600 if mode is None else mode,
+            dir_fd=parent,
+        )
+        try:
+            os.write(descriptor, content.encode("utf-8"))
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+        os.replace(temporary, path.name, src_dir_fd=parent, dst_dir_fd=parent)
+    except BaseException:
+        try:
+            os.unlink(temporary, dir_fd=parent)
+        except OSError:
+            pass
+        raise
     finally:
-        temporary.unlink(missing_ok=True)
+        os.close(parent)

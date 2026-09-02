@@ -1,5 +1,20 @@
 # Historique des versions
 
+## 2.4.2 — 2026-09-02
+
+Dernières exigences de la revue de sécurité, relevées en relisant le message
+du relecteur mot à mot plutôt que mon propre résumé.
+
+- **Le corps d'un message est borné avant d'atteindre l'interface.** Un
+  message volumineux émettait jusqu'à 2,9 Mo d'un seul tenant vers QML, qui
+  l'analyse d'un bloc. Le contenu est tronqué, et toute réponse du pont dont
+  la sérialisation dépasse le budget devient une erreur plutôt qu'un flot.
+- **`write_atomic` ne suit plus de lien symbolique.** C'est la fonction qui
+  écrit `hyprland.lua` : les deux autres fonctions d'écriture avaient été
+  durcies, pas elle, et un répertoire parent remplacé par un lien détournait
+  donc encore l'écriture vers sa cible. Le fichier temporaire est créé et
+  publié relativement au parent, lui-même ouvert sans suivre de lien.
+
 ## 2.4.1 — 2026-09-02
 
 Compléments à la revue de sécurité : trois exigences du relecteur n'étaient

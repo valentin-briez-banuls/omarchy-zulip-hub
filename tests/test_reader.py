@@ -63,6 +63,17 @@ class ReaderTests(unittest.TestCase):
         self.assertIsNone(result["message"]["channel"])
         self.assertEqual(result["message"]["sender"], "Bob Durand")
 
+    @patch("zulip_hub.reader.ZulipClient")
+    def test_an_enormous_message_is_truncated_before_reaching_the_interface(self, client_class):
+        from zulip_hub.limits import MAX_CONTENT, MAX_PAYLOAD_BYTES
+        client_class.return_value.message.return_value = {
+            "id": 42, "content": "X" * (MAX_CONTENT * 20),
+        }
+        result = ReaderManager(self.config, self.state, self.secrets).read({"message_id": 42})
+        self.assertEqual(len(result["message"]["content"]), MAX_CONTENT)
+        encoded = json.dumps(result, ensure_ascii=False).encode("utf-8")
+        self.assertLessEqual(len(encoded), MAX_PAYLOAD_BYTES)
+
     def test_a_message_absent_from_the_local_state_is_refused(self):
         manager = ReaderManager(self.config, self.state, self.secrets)
         with self.assertRaises(ReaderError):

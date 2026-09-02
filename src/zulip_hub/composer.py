@@ -9,7 +9,7 @@ from typing import Any, TextIO
 from .api import ZulipAPIError, ZulipClient
 from .config import ConfigError, Paths, load_config
 from .secrets import SecretError, SecretToolProvider
-from .limits import MAX_DIRECTORY, MAX_NAME, bounded_text
+from .limits import MAX_DIRECTORY, MAX_NAME, bounded_text, encoded_response
 from .state import recent_row
 
 
@@ -222,6 +222,6 @@ def serve_once(
             "error": str(exc),
             "delivery_uncertain": isinstance(exc, ZulipAPIError) and exc.code is None,
         }
-    output_stream.write(json.dumps(response, ensure_ascii=False) + "\n")
+    output_stream.write(encoded_response(response))
     output_stream.flush()
     return 0

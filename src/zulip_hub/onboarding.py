@@ -12,6 +12,7 @@ from urllib.parse import urlsplit
 from .api import ZulipAPIError, ZulipClient
 from .config import ConfigError, Paths, load_config
 from .files import write_atomic
+from .limits import encoded_response
 from .secrets import SecretError, SecretToolProvider
 
 
@@ -353,6 +354,6 @@ def serve_once(
         response = OnboardingManager(config_path or Paths.defaults().config).handle(request)
     except (OnboardingError, ZulipAPIError, SecretError, ConfigError, json.JSONDecodeError) as exc:
         response = {"ok": False, "error": str(exc)}
-    output_stream.write(json.dumps(response, ensure_ascii=False) + "\n")
+    output_stream.write(encoded_response(response))
     output_stream.flush()
     return 0

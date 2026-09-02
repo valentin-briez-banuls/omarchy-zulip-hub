@@ -8,6 +8,7 @@ from typing import Any, TextIO
 
 from .api import ZulipAPIError, ZulipClient
 from .config import ConfigError, Paths, load_config
+from .limits import MAX_CONTENT, bounded_text, encoded_response
 from .secrets import SecretError, SecretToolProvider
 from .state import recent_row
 
@@ -68,7 +69,7 @@ class ReaderManager:
             "ok": True,
             "message": {
                 "id": message_id,
-                "content": content,
+                "content": bounded_text(content, MAX_CONTENT),
                 "sender": str(row.get("sender") or ""),
                 "type": row.get("type"),
                 "channel": row.get("channel"),
@@ -102,6 +103,6 @@ def serve_once(
         ).handle(request)
     except (ReaderError, ZulipAPIError, SecretError, ConfigError, json.JSONDecodeError) as exc:
         response = {"ok": False, "error": str(exc)}
-    output_stream.write(json.dumps(response, ensure_ascii=False) + "\n")
+    output_stream.write(encoded_response(response))
     output_stream.flush()
     return 0

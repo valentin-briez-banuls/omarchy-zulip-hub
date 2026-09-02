@@ -1,14 +1,33 @@
 import unittest
 
+import json
+
 from zulip_hub.limits import (
     MAX_COLLECTION,
     MAX_DEPTH,
+    MAX_PAYLOAD_BYTES,
     MAX_TEXT,
     bounded_list,
     bounded_text,
     clamped_number,
+    encoded_response,
     exceeds_depth,
 )
+
+
+class ResponseTests(unittest.TestCase):
+    """Ce qui part vers l’interface doit tenir un budget, quoi qu’il contienne."""
+
+    def test_an_ordinary_response_is_encoded_as_is(self):
+        line = encoded_response({"ok": True, "valeur": "bonjour"})
+        self.assertEqual(json.loads(line), {"ok": True, "valeur": "bonjour"})
+        self.assertTrue(line.endswith("\n"))
+
+    def test_an_oversized_response_is_replaced_by_an_error(self):
+        line = encoded_response({"ok": True, "corps": "X" * (MAX_PAYLOAD_BYTES * 2)})
+        answer = json.loads(line)
+        self.assertFalse(answer["ok"])
+        self.assertLessEqual(len(line.encode("utf-8")), MAX_PAYLOAD_BYTES)
 
 
 class DepthTests(unittest.TestCase):

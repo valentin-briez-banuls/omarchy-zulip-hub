@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import math
 from typing import Any
 
@@ -22,12 +23,32 @@ MAX_DEPTH = 64
 MAX_DIRECTORY = 500
 MAX_NAME = 256
 
+# Corps d’un message récupéré à la demande : borné avant d’être remis à
+# l’interface, qui l’analyse d’un seul tenant.
+MAX_CONTENT = 128 * 1024
+
 # Taille d’une charge sérialisée, écrite dans l’état ou émise vers
 # l’interface. Les bornes par champ ne s’additionnent pas toutes seules.
 MAX_PAYLOAD_BYTES = 512 * 1024
 MAX_MESSAGE_LENGTH = 1_000_000
 MAX_TIMEOUT_SECONDS = 600
 MAX_BACKOFF_SECONDS = 3600
+
+
+def encoded_response(payload: dict[str, Any]) -> str:
+    """Ligne de réponse remise à l’interface, tenue dans le budget d’émission.
+
+    Les bornes appliquées champ par champ ne garantissent pas la taille de
+    l’ensemble : la vérification porte donc sur la charge sérialisée, et une
+    réponse trop volumineuse devient une erreur plutôt qu’un flot.
+    """
+    data = json.dumps(payload, ensure_ascii=False) + "\n"
+    if len(data.encode("utf-8")) > MAX_PAYLOAD_BYTES:
+        return json.dumps(
+            {"ok": False, "error": "Réponse locale trop volumineuse."},
+            ensure_ascii=False,
+        ) + "\n"
+    return data
 
 
 def exceeds_depth(raw: bytes, limit: int = MAX_DEPTH) -> bool:

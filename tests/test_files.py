@@ -8,6 +8,7 @@ from zulip_hub.files import (
     is_managed_module,
     open_directory,
     single_instance,
+    write_atomic,
     write_exclusive,
     write_no_follow,
 )
@@ -71,6 +72,24 @@ class ParentDirectoryTests(unittest.TestCase):
         with self.assertRaises(OSError):
             write_exclusive(self.link / "nouveau.lua", b"traverse")
         self.assertFalse((self.real / "nouveau.lua").exists())
+
+    def test_an_atomic_write_through_a_symlinked_parent_is_refused(self):
+        (self.real / "hyprland.lua").write_text("intact", encoding="utf-8")
+        with self.assertRaises(OSError):
+            write_atomic(self.link / "hyprland.lua", "traverse")
+        self.assertEqual((self.real / "hyprland.lua").read_text(encoding="utf-8"), "intact")
+
+    def test_an_atomic_write_still_replaces_a_real_file(self):
+        target = self.real / "hyprland.lua"
+        target.write_text("avant", encoding="utf-8")
+        write_atomic(target, "apres")
+        self.assertEqual(target.read_text(encoding="utf-8"), "apres")
+
+    def test_an_atomic_write_leaves_no_temporary_behind(self):
+        target = self.real / "hyprland.lua"
+        write_atomic(target, "contenu")
+        restes = sorted(item.name for item in self.real.iterdir() if item.name.startswith("."))
+        self.assertEqual(restes, [])
 
     def test_a_real_parent_still_works(self):
         write_no_follow(self.real / "zulip_hub.lua", b"remplace")
