@@ -1,5 +1,16 @@
 # Historique des versions
 
+## 2.2.0 — 2026-09-02
+
+- `Entrée` affiche désormais le message dans le panneau au lieu d'ouvrir la
+  page web. Expéditeur, canal et topic viennent de l'état local, le corps est
+  récupéré à la demande.
+- `O` et un bouton sur la ligne conservent l'ouverture dans Zulip.
+- Le corps d'un message n'est jamais écrit sur disque : il ne vit qu'en
+  mémoire et disparaît à la fermeture du panneau.
+- Le Markdown est rendu ; les extensions propres à Zulip — mentions, émojis,
+  liens de canaux — restent affichées littéralement.
+
 ## 2.1.3 — 2026-09-02
 
 - Répondre à une conversation dont on est le seul participant fonctionne.

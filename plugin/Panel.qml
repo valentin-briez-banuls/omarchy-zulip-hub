@@ -27,16 +27,28 @@ Panel {
   readonly property string localeName: Qt.locale().name
   readonly property var onboarding: onboardingLoader.item || fallbackOnboarding
   readonly property var composer: composerLoader.item || fallbackComposer
+  readonly property var reader: readerLoader.item || fallbackReader
   readonly property bool showSetup: onboarding.ready
     && (!onboarding.configured || onboarding.editing)
   readonly property bool showSettings: onboarding.ready && onboarding.configured
-    && onboarding.settingsOpen && !root.showSetup && !root.showComposer
+    && onboarding.settingsOpen && !root.showSetup && !root.showComposer && !root.showMessage
   readonly property bool showDiagnostics: onboarding.ready && onboarding.configured
-    && onboarding.diagnosticsOpen && !root.showSetup && !root.showSettings && !root.showComposer
+    && onboarding.diagnosticsOpen && !root.showSetup && !root.showSettings
+    && !root.showComposer && !root.showMessage
   readonly property bool showComposer: onboarding.ready && onboarding.configured
     && composer.open && !root.showSetup
+  readonly property bool showMessage: onboarding.ready && onboarding.configured
+    && reader.open && !root.showSetup && !root.showComposer
+  // Vue par defaut : la liste. La condition etait recopiee six fois.
+  readonly property bool showHome: !root.showSetup && !root.showSettings
+    && !root.showDiagnostics && !root.showComposer && !root.showMessage
   readonly property var onboardingController: onboarding
   readonly property var composerController: composer
+  readonly property var readerController: reader
+  property var fallbackReader: ({
+    available: false, open: false, busy: false, message: null, error: "", destination: "",
+    show: function() { return false }, close: function() {}
+  })
   property var fallbackOnboarding: ({
     available: false, ready: false, configured: false, active: false, busy: false, editing: false,
     settingsOpen: false, diagnosticsOpen: false, settings: ({}), diagnostics: ({}),
@@ -130,6 +142,9 @@ Panel {
       }
       appendTarget(rows, composeField); appendTarget(rows, sendButton)
       if (!composer.replying) appendTarget(rows, refreshDirectoryButton)
+    } else if (root.showMessage) {
+      appendTarget(rows, readerBackButton); appendTarget(rows, readerReplyButton)
+      appendTarget(rows, readerOpenButton)
     } else if (root.showSettings) {
       appendTarget(rows, settingsNavButton)
       appendTarget(rows, notifyEnabled); appendTarget(rows, notifyPrivate); appendTarget(rows, notifyMentions)
@@ -213,12 +228,21 @@ Panel {
     return item && item.row ? item.row : null
   }
 
-  function openMessage(row) {
+  function openInZulip(row) {
     if (!row || openProcess.running) return
     actionError = ""
     openProcess.command = ["/usr/bin/python3", root.runnerPath, "open-message", String(row.id)]
     openProcess.running = true
     close()
+  }
+
+  function readMessage(row) {
+    if (!row || reader.available !== true) return
+    root.actionError = ""
+    root.actionMessage = ""
+    onboarding.settingsOpen = false
+    onboarding.diagnosticsOpen = false
+    reader.show(row)
   }
 
   function replyToMessage(row) {
@@ -298,6 +322,13 @@ Panel {
     source: Qt.resolvedUrl("Composer.qml")
   }
 
+  Loader {
+    id: readerLoader
+    active: true
+    visible: false
+    source: Qt.resolvedUrl("Reader.qml")
+  }
+
   Connections {
     target: composerLoader.item
     ignoreUnknownSignals: true
@@ -375,6 +406,7 @@ Panel {
       onActivateRequested: root.activateCursor()
       onCloseRequested: {
         if (root.showComposer) composer.open = false
+        else if (root.showMessage) reader.close()
         else if (root.showSettings || root.showDiagnostics || (root.showSetup && onboarding.configured)) {
           onboarding.editing = false; onboarding.settingsOpen = false; onboarding.diagnosticsOpen = false
         } else root.close()
@@ -387,6 +419,7 @@ Panel {
       onTextKey: function(text) {
         if (text === "r" || text === "R") hub.refresh()
         else if (text === "a" || text === "A") root.replyToMessage(root.selectedMessage())
+        else if (text === "o" || text === "O") root.openInZulip(root.selectedMessage())
       }
 
       Flickable {
@@ -766,6 +799,110 @@ Panel {
           }
 
           Column {
+            visible: root.showMessage
+            width: parent.width
+            spacing: Style.space(8)
+
+            PanelSectionHeader {
+              text: root.t("messageTitle")
+              foreground: root.foreground
+              fontFamily: root.fontFamily
+            }
+
+            Text {
+              width: parent.width
+              text: reader.message ? String(reader.message.sender || "") : ""
+              textFormat: Text.PlainText
+              elide: Text.ElideRight
+              color: root.foreground
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.body
+              font.bold: true
+            }
+
+            Text {
+              width: parent.width
+              text: reader.destination
+              textFormat: Text.PlainText
+              elide: Text.ElideRight
+              color: root.dim
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.bodySmall
+            }
+
+            Text {
+              visible: reader.busy && reader.message === null
+              width: parent.width
+              text: root.t("loadingMessage")
+              textFormat: Text.PlainText
+              color: root.dim
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.bodySmall
+            }
+
+            Text {
+              visible: reader.message !== null
+              width: parent.width
+              // Zulip renvoie du Markdown brut ; ses extensions propres
+              // (mentions, emojis, liens de canaux) restent litterales.
+              text: reader.message ? String(reader.message.content || "") : ""
+              textFormat: Text.MarkdownText
+              wrapMode: Text.Wrap
+              color: root.foreground
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.body
+            }
+
+            Text {
+              visible: reader.error !== ""
+              width: parent.width
+              text: reader.error
+              textFormat: Text.PlainText
+              wrapMode: Text.WordWrap
+              color: root.urgent
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.bodySmall
+            }
+
+            RowLayout {
+              width: parent.width
+              spacing: Style.space(8)
+
+              Button {
+                id: readerBackButton
+                text: root.t("backMessages")
+                onClicked: reader.close()
+                hasCursor: root.hasCursor(this)
+                focusable: true
+                function keyboardActivate() { clicked() }
+                onHovered: function(isHovered) { if (isHovered) root.selectTarget(this) }
+              }
+
+              Button {
+                id: readerReplyButton
+                text: root.t("reply")
+                enabled: composer.available === true && !composer.busy && reader.message !== null
+                onClicked: root.replyToMessage(reader.message)
+                hasCursor: root.hasCursor(this)
+                focusable: true
+                function keyboardActivate() { clicked() }
+                onHovered: function(isHovered) { if (isHovered) root.selectTarget(this) }
+              }
+
+              Button {
+                id: readerOpenButton
+                text: root.t("openInZulip")
+                enabled: !openProcess.running && reader.message !== null
+                onClicked: root.openInZulip(reader.message)
+                hasCursor: root.hasCursor(this)
+                focusable: true
+                function keyboardActivate() { clicked() }
+                onHovered: function(isHovered) { if (isHovered) root.selectTarget(this) }
+              }
+            }
+          }
+
+          Column {
             visible: root.showSettings
             width: parent.width
             spacing: Style.space(8)
@@ -1036,7 +1173,7 @@ Panel {
           }
 
           RowLayout {
-            visible: hub.loaded && !root.showSetup && !root.showSettings && !root.showDiagnostics && !root.showComposer
+            visible: hub.loaded && root.showHome
             width: parent.width
             spacing: Style.space(8)
 
@@ -1046,8 +1183,7 @@ Panel {
           }
 
           Text {
-            visible: !root.showSetup && !root.showSettings && !root.showDiagnostics && !root.showComposer
-              && (!hub.loaded || hub.lastError !== "")
+            visible: root.showHome && (!hub.loaded || hub.lastError !== "")
             width: parent.width
             text: root.localizedStatus
             textFormat: Text.PlainText
@@ -1072,8 +1208,7 @@ Panel {
 
 
           Text {
-            visible: root.actionMessage !== "" && !root.showSetup && !root.showSettings
-              && !root.showDiagnostics && !root.showComposer
+            visible: root.actionMessage !== "" && root.showHome
             width: parent.width
             text: root.actionMessage
             textFormat: Text.PlainText
@@ -1084,12 +1219,12 @@ Panel {
           }
 
           PanelSeparator {
-            visible: hub.loaded && !root.showSetup && !root.showSettings && !root.showDiagnostics && !root.showComposer
+            visible: hub.loaded && root.showHome
             foreground: root.foreground
           }
 
           Column {
-            visible: hub.loaded && !root.showSetup && !root.showSettings && !root.showDiagnostics && !root.showComposer
+            visible: hub.loaded && root.showHome
             width: parent.width
             spacing: Style.space(9)
 
@@ -1130,7 +1265,7 @@ Panel {
           }
 
           Text {
-            visible: hub.loaded && !root.showSetup && !root.showSettings && !root.showDiagnostics && !root.showComposer
+            visible: hub.loaded && root.showHome
             width: parent.width
             text: root.t("homeHelp")
             textFormat: Text.PlainText
@@ -1262,14 +1397,14 @@ Panel {
     hasCursor: root.hasCursor(messageRow)
     foreground: root.foreground
     implicitHeight: rowLayout.implicitHeight + Style.space(16)
-    function keyboardActivate() { root.openMessage(row) }
+    function keyboardActivate() { root.readMessage(row) }
 
     MouseArea {
       anchors.fill: parent
       hoverEnabled: true
       cursorShape: Qt.PointingHandCursor
       onEntered: root.selectRow(messageRow.rowIndex)
-      onClicked: root.openMessage(messageRow.row)
+      onClicked: root.readMessage(messageRow.row)
     }
 
     RowLayout {
@@ -1333,6 +1468,17 @@ Panel {
         font.family: root.fontFamily
         font.pixelSize: Style.font.caption
         Layout.alignment: Qt.AlignTop
+      }
+
+      PanelActionButton {
+        iconText: "↗"
+        tooltipText: root.t("openInZulip")
+        foreground: root.foreground
+        hoverColor: root.foreground
+        fontFamily: root.fontFamily
+        enabled: !openProcess.running
+        Layout.alignment: Qt.AlignVCenter
+        onClicked: root.openInZulip(messageRow.row)
       }
 
       PanelActionButton {

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "omarchy-zulip-hub"
-version = "2.1.3"
+version = "2.2.0"
 description = "Local Zulip event bridge for the Omarchy desktop"
 readme = "README.md"
 requires-python = ">=3.11"

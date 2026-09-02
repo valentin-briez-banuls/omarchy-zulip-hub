@@ -112,6 +112,22 @@ class ZulipClient:
             {"messages": message_ids, "op": "add", "flag": "read"},
         )
 
+    def message(self, message_id: int) -> dict[str, Any]:
+        """Récupère un message unique, contenu non rendu.
+
+        Les serveurs récents renvoient l’objet complet sous « message » ; les
+        plus anciens ne renvoient que « raw_content ». Les deux formes sont
+        acceptées plutôt que d’imposer une version de serveur.
+        """
+        payload = self._request("GET", f"messages/{message_id}", {"apply_markdown": False})
+        found = payload.get("message")
+        if isinstance(found, dict) and isinstance(found.get("content"), str):
+            return found
+        legacy = payload.get("raw_content")
+        if isinstance(legacy, str):
+            return {"id": message_id, "content": legacy}
+        raise ZulipAPIError("réponse Zulip sans contenu de message", retryable=False)
+
     def users(self) -> list[dict[str, Any]]:
         payload = self._request("GET", "users", {"client_gravatar": True})
         members = payload.get("members", [])

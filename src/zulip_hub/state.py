@@ -13,6 +13,14 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def recent_row(state: dict[str, Any], message_id: int) -> dict[str, Any] | None:
+    """Retrouve une conversation récente par identifiant de message."""
+    for row in state.get("recent", []):
+        if isinstance(row, dict) and row.get("id") == message_id:
+            return row
+    return None
+
+
 @dataclass
 class HubState:
     schema_version: int = 1

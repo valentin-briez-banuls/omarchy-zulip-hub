@@ -18,6 +18,7 @@ from .hyprland import HyprlandController, HyprlandError, resolve_launch_command
 from .notifications import NotificationCoordinator
 from .onboarding import serve_once
 from .opening import OpenError, UrlOpener
+from .reader import serve_once as serve_reader_once
 from .secrets import SecretError, SecretToolProvider
 from .state import StateReducer, StateStore
 
@@ -41,6 +42,7 @@ def parser() -> argparse.ArgumentParser:
     sub.add_parser("workspace-status", help="diagnostiquer la détection de la fenêtre Zulip")
     sub.add_parser("onboarding", help=argparse.SUPPRESS)
     sub.add_parser("compose", help=argparse.SUPPRESS)
+    sub.add_parser("read-message", help=argparse.SUPPRESS)
     os_integration = sub.add_parser("os-integration", help=argparse.SUPPRESS)
     os_integration.add_argument("action", choices=("status", "install", "remove"))
     return result
@@ -56,6 +58,8 @@ def main(argv: list[str] | None = None) -> int:
             return serve_once(args.config)
         if args.command == "compose":
             return serve_composer_once(args.config, args.state)
+        if args.command == "read-message":
+            return serve_reader_once(args.config, args.state)
         if args.command == "os-integration":
             print(json.dumps(
                 run_action(Path(__file__).resolve().parents[2], args.action),

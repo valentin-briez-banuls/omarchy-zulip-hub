@@ -84,6 +84,26 @@ class APITests(unittest.TestCase):
         request.assert_called_once_with("GET", "users", {"client_gravatar": True})
         self.assertEqual(result, [{"user_id": 7}])
 
+    def test_fetching_one_message_asks_for_unrendered_content(self):
+        client = ZulipClient("https://chat.example.com", "me@example.com", "top-secret")
+        payload = {"message": {"id": 42, "content": "Bonjour **équipe**"}}
+        with patch.object(client, "_request", return_value=payload) as request:
+            result = client.message(42)
+        request.assert_called_once_with("GET", "messages/42", {"apply_markdown": False})
+        self.assertEqual(result["content"], "Bonjour **équipe**")
+
+    def test_fetching_one_message_accepts_the_older_raw_content_shape(self):
+        client = ZulipClient("https://chat.example.com", "me@example.com", "top-secret")
+        with patch.object(client, "_request", return_value={"raw_content": "Bonjour"}):
+            result = client.message(42)
+        self.assertEqual(result, {"id": 42, "content": "Bonjour"})
+
+    def test_a_message_response_without_content_is_refused(self):
+        client = ZulipClient("https://chat.example.com", "me@example.com", "top-secret")
+        with patch.object(client, "_request", return_value={"message": {"id": 42}}):
+            with self.assertRaises(ZulipAPIError):
+                client.message(42)
+
     def test_send_direct_uses_user_ids_and_returns_message_id(self):
         client = ZulipClient("https://chat.example.com", "me@example.com", "top-secret")
         with patch.object(client, "_request", return_value={"id": 99}) as request:

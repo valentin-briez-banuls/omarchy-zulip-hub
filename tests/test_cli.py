@@ -104,6 +104,14 @@ class CLITests(unittest.TestCase):
         self.assertEqual(result, 0)
         self.assertTrue(observed.get("held"), "le daemon ne detient pas le verrou")
 
+    @patch("zulip_hub.cli.serve_reader_once", return_value=0)
+    def test_read_message_routes_to_the_reader_protocol(self, serve):
+        result = main([
+            "--config", str(self.config), "--state", str(self.state), "read-message",
+        ])
+        self.assertEqual(result, 0)
+        serve.assert_called_once_with(self.config, self.state)
+
     @patch("zulip_hub.cli.serve_composer_once", return_value=0)
     def test_compose_routes_to_private_stdin_protocol(self, serve):
         result = main([

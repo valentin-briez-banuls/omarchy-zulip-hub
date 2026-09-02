@@ -9,6 +9,7 @@ from typing import Any, TextIO
 from .api import ZulipAPIError, ZulipClient
 from .config import ConfigError, Paths, load_config
 from .secrets import SecretError, SecretToolProvider
+from .state import recent_row
 
 
 class ComposerError(RuntimeError):
@@ -112,10 +113,10 @@ class ComposerManager:
         message_id = request.get("message_id")
         if not isinstance(message_id, int) or isinstance(message_id, bool) or message_id <= 0:
             raise ComposerError("Le message auquel répondre est invalide.")
-        for row in self._local_state().get("recent", []):
-            if isinstance(row, dict) and row.get("id") == message_id:
-                return row
-        raise ComposerError("Ce message n’est plus dans les conversations récentes.")
+        row = recent_row(self._local_state(), message_id)
+        if row is None:
+            raise ComposerError("Ce message n’est plus dans les conversations récentes.")
+        return row
 
     @staticmethod
     def _positive_int(value: Any) -> int | None:

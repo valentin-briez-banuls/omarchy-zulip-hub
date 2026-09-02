@@ -110,6 +110,28 @@ ShellRoot {
         return
       }
       plugin.composerController.open = false
+      if (!plugin.readerController || plugin.readerController.available !== true) {
+        console.error("ZULIP_HUB_READER_NOT_READY")
+        Qt.exit(1)
+        return
+      }
+      plugin.readerController.message = {
+        id: 42, type: "stream", channel: "backend", topic: "deployment",
+        sender: "Alice Martin", content: "Bonjour"
+      }
+      plugin.readerController.open = true
+      if (!plugin.showMessage
+          || plugin.readerController.destination !== "#backend  \u203a  deployment") {
+        console.error("ZULIP_HUB_READER_STATE_MISMATCH")
+        Qt.exit(1)
+        return
+      }
+      plugin.readerController.close()
+      if (plugin.showMessage || plugin.readerController.message !== null) {
+        console.error("ZULIP_HUB_READER_CONTENT_KEPT")
+        Qt.exit(1)
+        return
+      }
       if (expectOffline) {
         if (plugin.hub.loaded || plugin.hub.connected || plugin.hub.statusText === "") {
           console.error("ZULIP_HUB_OFFLINE_STATE_MISMATCH")
