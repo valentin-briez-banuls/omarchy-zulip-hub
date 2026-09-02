@@ -100,6 +100,22 @@ class ComposerTests(unittest.TestCase):
         self.assertEqual(result, {"ok": True, "message_id": 52})
 
     @patch("zulip_hub.composer.ZulipClient")
+    def test_reply_to_a_conversation_with_myself_answers_me(self, client_class):
+        client = client_class.return_value
+        client.test_connection.return_value = {"user_id": 1}
+        client.send_direct.return_value = 54
+        self.state.write_text(json.dumps({
+            "max_message_length": 120,
+            "recent": [{
+                "id": 44, "type": "private", "sender_id": 1, "recipient_ids": [1],
+            }],
+        }), encoding="utf-8")
+        manager = ComposerManager(self.config, self.state, self.secrets)
+        result = manager.reply({"message_id": 44, "content": "Note pour moi"})
+        client.send_direct.assert_called_once_with([1], "Note pour moi")
+        self.assertEqual(result, {"ok": True, "message_id": 54})
+
+    @patch("zulip_hub.composer.ZulipClient")
     def test_handle_routes_the_reply_action(self, client_class):
         client_class.return_value.send_stream.return_value = 53
         manager = ComposerManager(self.config, self.state, self.secrets)

@@ -162,6 +162,13 @@ class ComposerManager:
                 continue
             recipients.append(user_id)
         if not recipients:
+            # Une conversation dont je suis le seul participant : Zulip la range
+            # sous « Messages avec vous-même », et y répondre s’adresse à moi.
+            me = self._positive_int(self_id)
+            participants = [*row.get("recipient_ids", []), row.get("sender_id")]
+            if me is not None and me in participants:
+                recipients = [me]
+        if not recipients:
             raise ComposerError("La conversation d’origine est incomplète.")
         return client.send_direct(recipients, content)
 

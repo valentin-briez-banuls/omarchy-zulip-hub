@@ -1,5 +1,11 @@
 # Historique des versions
 
+## 2.1.3 — 2026-09-02
+
+- Répondre à une conversation dont on est le seul participant fonctionne.
+  Zulip la range sous « Messages avec vous-même » ; le pont en retirait
+  l'unique destinataire et refusait l'envoi.
+
 ## 2.1.2 — 2026-09-02
 
 - Plus aucun nouvel essai immédiat. Une file d'événements rejetée relançait
