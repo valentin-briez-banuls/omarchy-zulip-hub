@@ -5,10 +5,89 @@ from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.parse import parse_qs
 
-from zulip_hub.api import ZulipAPIError, ZulipClient
+from urllib.request import Request
+
+from zulip_hub.api import SameOriginRedirect, ZulipAPIError, ZulipClient
+
+
+class RedirectTests(unittest.TestCase):
+    """urllib recopie les en-tetes vers la cible d une redirection en ne
+    retirant que content-length et content-type. Sans garde, la cle API part
+    donc vers l hote choisi par le serveur."""
+
+    def setUp(self):
+        self.handler = SameOriginRedirect()
+        self.request = Request(
+            "https://chat.example.com/api/v1/users/me",
+            headers={"Authorization": "Basic c2VjcmV0"},
+        )
+
+    def _redirect(self, target):
+        return self.handler.redirect_request(
+            self.request, BytesIO(b""), 302, "Found", {}, target,
+        )
+
+    def test_a_redirect_to_another_host_is_refused(self):
+        with self.assertRaises(HTTPError):
+            self._redirect("https://evil.example/collect")
+
+    def test_a_redirect_to_another_port_is_refused(self):
+        with self.assertRaises(HTTPError):
+            self._redirect("https://chat.example.com:8443/api/v1/users/me")
+
+    def test_a_downgrade_to_plain_http_is_refused(self):
+        with self.assertRaises(HTTPError):
+            self._redirect("http://chat.example.com/api/v1/users/me")
+
+    def test_a_redirect_within_the_same_origin_is_followed(self):
+        followed = self._redirect("https://chat.example.com/api/v1/users/me/")
+        self.assertIsNotNone(followed)
+        self.assertEqual(followed.full_url, "https://chat.example.com/api/v1/users/me/")
+
+
+class SiteTests(unittest.TestCase):
+    def test_a_plain_http_server_is_refused(self):
+        with self.assertRaises(ZulipAPIError):
+            ZulipClient("http://chat.example.com", "me@example.com", "top-secret")
+
+    def test_credentials_embedded_in_the_address_are_refused(self):
+        with self.assertRaises(ZulipAPIError):
+            ZulipClient("https://user:pass@chat.example.com", "me@example.com", "k")
+
+    def test_the_address_is_canonicalised_before_the_credential_is_built(self):
+        client = ZulipClient("https://Chat.Example.COM:443/", "me@example.com", "k")
+        self.assertEqual(client.site, "https://chat.example.com")
 
 
 class APITests(unittest.TestCase):
+    def test_an_oversized_response_is_refused_before_being_parsed(self):
+        from zulip_hub.limits import MAX_RESPONSE_BYTES
+        client = ZulipClient("https://chat.example.com", "me@example.com", "top-secret")
+        with patch.object(client, "_opener") as opener:
+            reader = opener.open.return_value.__enter__.return_value
+            reader.read.return_value = b"x" * (MAX_RESPONSE_BYTES + 1)
+            with self.assertRaisesRegex(ZulipAPIError, "volumineuse"):
+                client.test_connection()
+
+    def test_an_oversized_error_body_is_refused(self):
+        from zulip_hub.limits import MAX_RESPONSE_BYTES
+        client = ZulipClient("https://chat.example.com", "me@example.com", "top-secret")
+        refusal = HTTPError(
+            "https://chat.example.com/api/v1/users/me", 500, "Server Error",
+            {}, BytesIO(b"x" * (MAX_RESPONSE_BYTES + 1)),
+        )
+        with patch.object(client, "_opener") as opener:
+            opener.open.side_effect = refusal
+            with self.assertRaises(ZulipAPIError):
+                client.test_connection()
+
+    def test_requests_never_use_the_process_wide_opener(self):
+        client = ZulipClient("https://chat.example.com", "me@example.com", "top-secret")
+        with patch.object(client, "_opener") as opener:
+            opener.open.return_value.__enter__.return_value.read.return_value = b"{}"
+            client.test_connection()
+        opener.open.assert_called_once()
+
     def test_api_credentials_are_only_in_authorization_header(self):
         client = ZulipClient("https://chat.example.com", "me@example.com", "top-secret")
         self.assertEqual(client.site, "https://chat.example.com")
@@ -24,7 +103,8 @@ class APITests(unittest.TestCase):
             "https://chat.example.com/api/v1/events", 429, "Too Many Requests",
             {}, BytesIO(body),
         )
-        with patch("zulip_hub.api.urlopen", side_effect=refusal):
+        with patch.object(client, "_opener") as opener:
+            opener.open.side_effect = refusal
             with self.assertRaises(ZulipAPIError) as raised:
                 client.test_connection()
         self.assertEqual(raised.exception.code, "RATE_LIMIT_HIT")
@@ -37,7 +117,8 @@ class APITests(unittest.TestCase):
             "https://chat.example.com/api/v1/events", 400, "Bad Request",
             {}, BytesIO(b'{"result":"error","msg":"non","code":"BAD_REQUEST"}'),
         )
-        with patch("zulip_hub.api.urlopen", side_effect=refusal):
+        with patch.object(client, "_opener") as opener:
+            opener.open.side_effect = refusal
             with self.assertRaises(ZulipAPIError) as raised:
                 client.test_connection()
         self.assertIsNone(raised.exception.retry_after)
@@ -68,12 +149,11 @@ class APITests(unittest.TestCase):
 
     def test_boolean_api_parameters_are_encoded_as_json(self):
         client = ZulipClient("https://chat.example.com", "me@example.com", "top-secret")
-        with patch("zulip_hub.api.urlopen") as open_url:
-            response = open_url.return_value.__enter__.return_value
-            response.__iter__.return_value = iter([b'{"result":"success","queue_id":"q"}'])
+        with patch.object(client, "_opener") as opener:
+            response = opener.open.return_value.__enter__.return_value
             response.read.return_value = b'{"result":"success","queue_id":"q"}'
             client.register()
-        request = open_url.call_args.args[0]
+        request = opener.open.call_args.args[0]
         parameters = parse_qs(request.data.decode())
         self.assertEqual(parameters["apply_markdown"], ["false"])
 

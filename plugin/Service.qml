@@ -16,20 +16,41 @@ Scope {
     }
   }
 
+  // Larret est cooperatif : le bridge ne voit le signal quau retour de son
+  // interrogation longue. Sans echeance, un bridge muet resterait indefiniment.
+  function stopBridge() {
+    if (!bridge.running) return
+    bridge.signal(15)
+    escalation.restart()
+  }
+
   function restartBridge() {
-    if (bridge.running) bridge.signal(15)
+    if (bridge.running) stopBridge()
     else retry.restart()
   }
 
   Component.onCompleted: startBridge()
   Component.onDestruction: {
     root.stopping = true
+    // A la destruction, aucun minuteur ne survit pour escalader : cest le
+    // verrou dinstance unique qui empeche un bridge survivant de travailler
+    // en parallele du suivant.
     if (bridge.running) bridge.signal(15)
   }
 
   Process {
     id: bridge
-    onExited: if (!root.stopping) retry.restart()
+    onExited: {
+      escalation.stop()
+      if (!root.stopping) retry.restart()
+    }
+  }
+
+  Timer {
+    id: escalation
+    interval: 15000
+    repeat: false
+    onTriggered: if (bridge.running) bridge.signal(9)
   }
 
   Timer {

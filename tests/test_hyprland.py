@@ -93,16 +93,16 @@ class HyprlandTests(unittest.TestCase):
         fake = FakeHyprland([row])
         self.assertEqual(self.controller(fake).matching_client()["address"], "0xabc")
 
-    @patch("zulip_hub.hyprland.shutil.which")
-    def test_launch_resolution_prefers_desktop_then_webapp(self, which):
+    @patch("zulip_hub.hyprland.commands.available")
+    def test_launch_resolution_prefers_desktop_then_webapp(self, available):
         config = BridgeConfig(
             AccountConfig("https://chat.example.com", "me@example.com"),
             opening=OpenConfig("auto", ("zulip",)),
         )
-        which.side_effect = lambda command: f"/usr/bin/{command}" if command in {"zulip", "uwsm-app"} else None
+        available.side_effect = lambda command: command in {"zulip", "uwsm-app"}
         self.assertEqual(resolve_launch_command(config), ["uwsm-app", "--", "zulip"])
 
-        which.side_effect = lambda command: "/usr/bin/omarchy-launch-webapp" if command == "omarchy-launch-webapp" else None
+        available.side_effect = lambda command: command == "omarchy-launch-webapp"
         config = BridgeConfig(AccountConfig("https://chat.example.com", "me@example.com"))
         self.assertEqual(resolve_launch_command(config), [
             "omarchy-launch-webapp", "https://chat.example.com", "--class=zulip-hub",

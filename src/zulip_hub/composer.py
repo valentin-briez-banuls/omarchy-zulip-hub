@@ -9,6 +9,7 @@ from typing import Any, TextIO
 from .api import ZulipAPIError, ZulipClient
 from .config import ConfigError, Paths, load_config
 from .secrets import SecretError, SecretToolProvider
+from .limits import MAX_COLLECTION, bounded_text
 from .state import recent_row
 
 
@@ -52,7 +53,7 @@ class ComposerManager:
         identity = client.test_connection()
         self_id = identity.get("user_id")
         users = []
-        for member in client.users():
+        for member in client.users()[:MAX_COLLECTION]:
             user_id = member.get("user_id")
             if (
                 not isinstance(user_id, int)
@@ -66,8 +67,10 @@ class ComposerManager:
                 continue
             users.append({
                 "id": user_id,
-                "full_name": str(member.get("full_name") or member.get("email") or user_id),
-                "email": str(member.get("email") or ""),
+                "full_name": bounded_text(
+                    member.get("full_name") or member.get("email") or user_id
+                ),
+                "email": bounded_text(member.get("email") or ""),
             })
         users.sort(key=lambda item: (item["full_name"].casefold(), item["id"]))
 

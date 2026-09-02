@@ -76,7 +76,8 @@ Zulip Hub creates user-owned data only:
 
 Message bodies and drafts are not persisted. Reading a message fetches its
 body on demand and keeps it in memory only; it is dropped when the panel
-closes. A reply carries only the message identifier to the local helper, which
+closes, and is rendered as plain text so that a remote sender cannot drive
+formatting or resource loading. A reply carries only the message identifier to the local helper, which
 resolves the destination from its own state, so the interface can never
 redirect a message. Notification content is redacted
 while the session is locked or when lock state cannot be confirmed.

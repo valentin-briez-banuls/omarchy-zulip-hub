@@ -26,6 +26,41 @@ class StateTests(unittest.TestCase):
             self.assertEqual(json.loads(path.read_text())["recent"][0]["id"], 42)
             self.assertEqual(path.stat().st_mode & 0o777, 0o600)
 
+    def test_a_hostile_message_cannot_inflate_the_stored_state(self):
+        from zulip_hub.limits import MAX_COLLECTION, MAX_TEXT
+        reducer = StateReducer(limit=2)
+        reducer.apply({"type": "message", "message": {
+            "id": 42, "type": "stream",
+            "sender_full_name": "A" * (MAX_TEXT * 3),
+            "display_recipient": "B" * (MAX_TEXT * 3),
+            "subject": "C" * (MAX_TEXT * 3),
+            "sender_id": 7, "stream_id": 9, "timestamp": 10,
+            "flags": ["mentioned"] * (MAX_COLLECTION * 2),
+        }})
+        row = reducer.state.recent[0]
+        self.assertEqual(len(row["sender"]), MAX_TEXT)
+        self.assertEqual(len(row["channel"]), MAX_TEXT)
+        self.assertEqual(len(row["topic"]), MAX_TEXT)
+        self.assertEqual(len(row["flags"]), MAX_COLLECTION)
+
+    def test_a_private_message_bounds_its_recipient_list(self):
+        from zulip_hub.limits import MAX_COLLECTION
+        reducer = StateReducer(limit=2)
+        reducer.apply({"type": "message", "message": {
+            "id": 43, "type": "private", "sender_full_name": "Bob", "sender_id": 8,
+            "timestamp": 11, "flags": [],
+            "display_recipient": [{"id": index} for index in range(MAX_COLLECTION * 2)],
+        }})
+        self.assertEqual(len(reducer.state.recent[0]["recipient_ids"]), MAX_COLLECTION)
+
+    def test_the_server_cannot_impose_an_absurd_message_length(self):
+        from zulip_hub.limits import MAX_MESSAGE_LENGTH
+        reducer = StateReducer()
+        reducer.initialized({"unread_msgs": {}, "max_message_length": 10 ** 12})
+        self.assertEqual(reducer.state.max_message_length, MAX_MESSAGE_LENGTH)
+        reducer.initialized({"unread_msgs": {}, "max_message_length": float("nan")})
+        self.assertEqual(reducer.state.max_message_length, 10000)
+
     def test_read_flags_never_make_count_negative(self):
         reducer = StateReducer()
         reducer.apply({"type": "update_message_flags", "flag": "read", "operation": "add", "messages": [1, 2]})

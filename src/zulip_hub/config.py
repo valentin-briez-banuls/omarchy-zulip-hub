@@ -2,13 +2,30 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import math
 import os
 import re
 import tomllib
 
+from .limits import MAX_BACKOFF_SECONDS, MAX_TIMEOUT_SECONDS
+
 
 class ConfigError(ValueError):
     """Configuration cannot be loaded safely."""
+
+
+def _number(section: dict, name: str, default: float) -> float:
+    """Nombre de configuration, fini et de type attendu.
+
+    ``float("nan")`` traverse toute comparaison de bornes sans jamais la
+    déclencher : la finitude se vérifie donc explicitement.
+    """
+    value = section.get(name, default)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ConfigError(f"{name} doit être un nombre")
+    if not math.isfinite(value):
+        raise ConfigError(f"{name} doit être un nombre fini")
+    return float(value)
 
 
 def _xdg_path(variable: str, fallback: str) -> Path:
@@ -97,15 +114,17 @@ def load_config(path: Path) -> BridgeConfig:
         raise ConfigError("la clé API ne doit pas être stockée dans config.toml")
 
     bridge = raw.get("bridge", {})
-    limit = int(bridge.get("recent_message_limit", 30))
-    timeout = int(bridge.get("request_timeout_seconds", 90))
-    initial = float(bridge.get("initial_backoff_seconds", 1))
-    maximum = float(bridge.get("max_backoff_seconds", 60))
+    limit = int(_number(bridge, "recent_message_limit", 30))
+    timeout = int(_number(bridge, "request_timeout_seconds", 90))
+    initial = _number(bridge, "initial_backoff_seconds", 1)
+    maximum = _number(bridge, "max_backoff_seconds", 60)
     if not 1 <= limit <= 200:
         raise ConfigError("recent_message_limit doit être compris entre 1 et 200")
-    if timeout < 10:
-        raise ConfigError("request_timeout_seconds doit être >= 10")
-    if initial <= 0 or maximum < initial:
+    if not 10 <= timeout <= MAX_TIMEOUT_SECONDS:
+        raise ConfigError(
+            f"request_timeout_seconds doit être compris entre 10 et {MAX_TIMEOUT_SECONDS}"
+        )
+    if initial <= 0 or maximum < initial or maximum > MAX_BACKOFF_SECONDS:
         raise ConfigError("configuration du backoff invalide")
     notifications = raw.get("notifications", {})
     group_window = int(notifications.get("group_window_seconds", 10))

@@ -1,8 +1,9 @@
 from pathlib import Path
-import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
+
+from zulip_hub.commands import CommandError, CommandResult
 
 from zulip_hub.files import HYPR_BLOCK
 from zulip_hub.marketplace import OsIntegration
@@ -23,15 +24,15 @@ class MarketplaceIntegrationTests(unittest.TestCase):
 
     @staticmethod
     def completed(argv, **kwargs):
-        return subprocess.CompletedProcess(argv, 0, "", "")
+        return CommandResult(returncode=0, stdout="")
 
     @staticmethod
     def hyprland_refuses(argv, **kwargs):
         if argv[0] == "hyprland":
-            raise OSError("hyprland indisponible")
-        return subprocess.CompletedProcess(argv, 0, "", "")
+            raise CommandError("hyprland indisponible")
+        return CommandResult(returncode=0, stdout="")
 
-    @patch("zulip_hub.marketplace.subprocess.run", side_effect=completed)
+    @patch("zulip_hub.marketplace.commands.run", side_effect=completed)
     def test_install_and_remove_only_manage_the_owned_hyprland_block(self, run):
         self.assertFalse(self.integration.status()["installed"])
         self.assertTrue(self.integration.install()["installed"])
@@ -41,7 +42,7 @@ class MarketplaceIntegrationTests(unittest.TestCase):
         self.assertNotIn(HYPR_BLOCK.strip(), self.main.read_text())
         self.assertFalse(self.integration.hypr_module.exists())
 
-    @patch("zulip_hub.marketplace.subprocess.run", side_effect=completed)
+    @patch("zulip_hub.marketplace.commands.run", side_effect=completed)
     def test_remove_refuses_a_modified_managed_module(self, run):
         self.integration.install()
         self.integration.hypr_module.write_text("-- local change\n")
@@ -50,13 +51,45 @@ class MarketplaceIntegrationTests(unittest.TestCase):
         self.assertTrue(self.integration.hypr_module.exists())
 
 
+    @patch("zulip_hub.marketplace.commands.run", side_effect=completed)
+    def test_install_never_writes_through_a_symlinked_module(self, run):
+        outside = self.home / "cible-hors-perimetre.lua"
+        outside.write_text("intact\n", encoding="utf-8")
+        self.integration.hypr_module.parent.mkdir(parents=True, exist_ok=True)
+        self.integration.hypr_module.symlink_to(outside)
+        with self.assertRaises(Exception):
+            self.integration.install()
+        self.assertEqual(outside.read_text(encoding="utf-8"), "intact\n")
+
+    @patch("zulip_hub.marketplace.commands.run", side_effect=completed)
+    def test_install_never_writes_through_a_symlinked_backup(self, run):
+        outside = self.home / "cible-sauvegarde.lua"
+        outside.write_text("intact\n", encoding="utf-8")
+        backup = self.main.with_suffix(".lua.zulip-hub.bak")
+        backup.symlink_to(outside)
+        with self.assertRaises(Exception):
+            self.integration.install()
+        self.assertEqual(outside.read_text(encoding="utf-8"), "intact\n")
+
+    def test_a_failed_removal_restores_the_block_and_the_module(self):
+        with patch("zulip_hub.marketplace.commands.run", side_effect=self.completed):
+            self.integration.install()
+        expected_main = self.main.read_text(encoding="utf-8")
+        expected_module = self.integration.hypr_module.read_bytes()
+        with patch("zulip_hub.marketplace.commands.run", side_effect=self.hyprland_refuses):
+            with self.assertRaises(Exception):
+                self.integration.remove()
+        self.assertEqual(self.main.read_text(encoding="utf-8"), expected_main)
+        self.assertTrue(self.integration.hypr_module.exists())
+        self.assertEqual(self.integration.hypr_module.read_bytes(), expected_module)
+
     def _downgrade_module_to_the_previous_version(self):
         legacy = self.integration.hypr_module.read_text(encoding="utf-8").replace(
             "io.github.valentin-briez-banuls.zulip-hub toggle", "zulip-hub toggle"
         )
         self.integration.hypr_module.write_text(legacy, encoding="utf-8")
 
-    @patch("zulip_hub.marketplace.subprocess.run", side_effect=completed)
+    @patch("zulip_hub.marketplace.commands.run", side_effect=completed)
     def test_install_upgrades_a_managed_module_left_by_an_older_version(self, run):
         self.integration.install()
         self._downgrade_module_to_the_previous_version()
@@ -67,7 +100,7 @@ class MarketplaceIntegrationTests(unittest.TestCase):
             self.integration.source_module.read_bytes(),
         )
 
-    @patch("zulip_hub.marketplace.subprocess.run", side_effect=completed)
+    @patch("zulip_hub.marketplace.commands.run", side_effect=completed)
     def test_remove_clears_a_managed_module_left_by_an_older_version(self, run):
         self.integration.install()
         self._downgrade_module_to_the_previous_version()
@@ -75,11 +108,11 @@ class MarketplaceIntegrationTests(unittest.TestCase):
         self.assertFalse(self.integration.hypr_module.exists())
 
     def test_a_failed_upgrade_restores_the_module_the_hyprland_block_requires(self):
-        with patch("zulip_hub.marketplace.subprocess.run", side_effect=self.completed):
+        with patch("zulip_hub.marketplace.commands.run", side_effect=self.completed):
             self.integration.install()
         self._downgrade_module_to_the_previous_version()
         previous = self.integration.hypr_module.read_bytes()
-        with patch("zulip_hub.marketplace.subprocess.run", side_effect=self.hyprland_refuses):
+        with patch("zulip_hub.marketplace.commands.run", side_effect=self.hyprland_refuses):
             with self.assertRaises(Exception):
                 self.integration.install()
         self.assertTrue(self.integration.hypr_module.exists())

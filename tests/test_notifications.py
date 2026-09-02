@@ -105,7 +105,7 @@ class NotificationTests(unittest.TestCase):
         self.assertLessEqual(len(preview), 180)
         self.assertEqual(_plain_preview("--exec"), "Message: --exec")
 
-    @patch("zulip_hub.notifications.subprocess.run")
+    @patch("zulip_hub.notifications.commands.run")
     def test_sender_uses_argv_click_action_and_replacement(self, run):
         run.return_value.returncode = 0
         run.return_value.stdout = "77\n"
@@ -120,7 +120,7 @@ class NotificationTests(unittest.TestCase):
         self.assertEqual(command[-3:], ["zulip-hub", "open-url", "https://chat.example.com/#narrow/x"])
         self.assertEqual(notification_id, 77)
 
-    @patch("zulip_hub.notifications.subprocess.run")
+    @patch("zulip_hub.notifications.commands.run")
     def test_lock_detector_fails_closed_on_unavailable_shell(self, run):
         run.return_value.returncode = 1
         run.return_value.stdout = ""

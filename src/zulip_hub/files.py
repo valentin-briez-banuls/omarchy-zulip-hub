@@ -5,6 +5,7 @@ from contextlib import contextmanager
 import fcntl
 import os
 from pathlib import Path
+import stat
 import tempfile
 
 
@@ -15,14 +16,51 @@ MODULE_HEADER = "-- Omarchy Zulip Hub"
 
 
 def is_managed_module(path: Path) -> bool:
-    """True when nothing occupies *path* or when Zulip Hub wrote what is there.
+    """True quand rien n’occupe *path*, ou quand Zulip Hub a écrit ce qui s’y trouve.
 
-    Any released version of the module starts with MODULE_HEADER, so an upgrade
-    recognises the file it installed previously while a foreign file is left alone.
+    L’examen porte sur le lien lui-même, jamais sur sa cible : un lien
+    symbolique, fût-il pointé vers un fichier portant notre en-tête, ferait
+    écrire ailleurs et n’est donc jamais reconnu comme géré. Un lien cassé
+    n’est pas non plus un fichier absent, alors que ``exists()`` les confond.
+
+    Toute version publiée du module commence par MODULE_HEADER : une mise à
+    niveau reconnaît ainsi le fichier qu’elle a elle-même installé.
     """
-    if not path.exists():
+    try:
+        status = os.lstat(path)
+    except FileNotFoundError:
         return True
-    return path.read_text(encoding="utf-8", errors="replace").startswith(MODULE_HEADER)
+    except OSError:
+        return False
+    if not stat.S_ISREG(status.st_mode):
+        return False
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as handle:
+            return handle.read(len(MODULE_HEADER)) == MODULE_HEADER
+    except OSError:
+        return False
+
+
+def write_no_follow(path: Path, data: bytes, mode: int = 0o644) -> None:
+    """Écrit *path* sans jamais suivre un lien symbolique au dernier segment."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, mode)
+    try:
+        os.write(descriptor, data)
+    finally:
+        os.close(descriptor)
+
+
+def write_exclusive(path: Path, data: bytes, mode: int = 0o600) -> None:
+    """Crée *path*, en échouant s’il existe déjà, fût-ce sous forme de lien."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor = os.open(
+        path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, mode,
+    )
+    try:
+        os.write(descriptor, data)
+    finally:
+        os.close(descriptor)
 
 
 @contextmanager

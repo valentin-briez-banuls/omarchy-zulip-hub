@@ -4,8 +4,10 @@ import base64
 import json
 from typing import Any
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode
-from urllib.request import Request, urlopen
+from urllib.parse import urlencode, urlsplit
+from urllib.request import HTTPRedirectHandler, Request, build_opener
+
+from .limits import MAX_RESPONSE_BYTES
 
 
 class ZulipAPIError(RuntimeError):
@@ -25,6 +27,61 @@ class ZulipAPIError(RuntimeError):
         self.retry_after = retry_after
 
 
+def _origin(url: str) -> tuple[str, str | None, int | None] | None:
+    """Origine d’une adresse, ou None si elle ne peut pas porter la clé API."""
+    parts = urlsplit(url)
+    if parts.scheme != "https" or not parts.hostname or parts.username or parts.password:
+        return None
+    return parts.scheme, parts.hostname.lower(), parts.port or 443
+
+
+class SameOriginRedirect(HTTPRedirectHandler):
+    """Refuse toute redirection qui changerait d’origine.
+
+    urllib recopie les en-têtes de la requête initiale vers la cible d’une
+    redirection, en n’écartant que ``content-length`` et ``content-type``. La
+    clé API partirait donc vers l’hôte choisi par le serveur, y compris un
+    autre domaine. Seule une redirection vers exactement la même origine
+    HTTPS est suivie.
+    """
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        current = _origin(req.full_url)
+        target = _origin(newurl)
+        if current is None or target is None or current != target:
+            raise HTTPError(
+                req.full_url, code,
+                "redirection hors origine refusée par Zulip Hub",
+                headers, fp,
+            )
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def _canonical_site(site: str) -> str:
+    """Adresse normalisée du serveur, refusée si elle ne peut pas être sûre.
+
+    La canonicalisation précède la construction de la clé d’authentification :
+    une adresse ambiguë ne doit jamais servir à fabriquer un en-tête.
+    """
+    parts = urlsplit(str(site).strip())
+    origin = _origin(site)
+    if origin is None:
+        raise ZulipAPIError("adresse de serveur Zulip invalide", retryable=False)
+    _scheme, host, port = origin
+    authority = host if port == 443 else f"{host}:{port}"
+    return f"https://{authority}{parts.path.rstrip('/')}"
+
+
+def _decoded(raw: bytes) -> Any:
+    """JSON d’une réponse déjà bornée en octets."""
+    if len(raw) > MAX_RESPONSE_BYTES:
+        raise ZulipAPIError("réponse Zulip trop volumineuse", retryable=False)
+    try:
+        return json.loads(raw.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError) as exc:
+        raise ZulipAPIError("réponse Zulip invalide", retryable=True) from exc
+
+
 def _retry_after(body: object) -> float | None:
     if not isinstance(body, dict):
         return None
@@ -36,10 +93,13 @@ def _retry_after(body: object) -> float | None:
 
 class ZulipClient:
     def __init__(self, site: str, email: str, api_key: str, timeout: int = 90):
-        self.site = site.rstrip("/")
+        self.site = _canonical_site(site)
         token = base64.b64encode(f"{email}:{api_key}".encode()).decode()
         self.headers = {"Authorization": f"Basic {token}", "User-Agent": "omarchy-zulip-hub/2.0"}
         self.timeout = timeout
+        # Ouvreur privé : l’ouvreur global du processus suivrait les
+        # redirections sans regarder l’origine.
+        self._opener = build_opener(SameOriginRedirect())
 
     def _request(self, method: str, path: str, params: dict[str, Any]) -> dict[str, Any]:
         encoded = urlencode({
@@ -54,18 +114,19 @@ class ZulipClient:
             data = encoded.encode()
         request = Request(url, data=data, headers=self.headers, method=method)
         try:
-            with urlopen(request, timeout=self.timeout) as response:
-                payload = json.load(response)
+            with self._opener.open(request, timeout=self.timeout) as response:
+                payload = _decoded(response.read(MAX_RESPONSE_BYTES + 1))
         except HTTPError as exc:
             code = None
             delay = None
             message = f"erreur HTTP Zulip {exc.code}"
             try:
-                body = json.loads(exc.read().decode())
-                code = body.get("code")
-                message = body.get("msg", message)
-                delay = _retry_after(body)
-            except (ValueError, UnicodeDecodeError):
+                body = _decoded(exc.read(MAX_RESPONSE_BYTES + 1))
+                if isinstance(body, dict):
+                    code = body.get("code")
+                    message = body.get("msg", message)
+                    delay = _retry_after(body)
+            except (ValueError, UnicodeDecodeError, ZulipAPIError):
                 pass
             raise ZulipAPIError(
                 message,

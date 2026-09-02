@@ -61,7 +61,9 @@ arguments d’un processus, les fichiers ou les journaux. Une réponse ne
 transmet qu’un identifiant de message au processus local, qui déduit la
 destination de son propre état. La lecture d’un message récupère son corps à
 la demande et ne le garde qu’en mémoire : il disparaît à la fermeture du
-panneau, et n’est jamais écrit sur disque.
+panneau, n’est jamais écrit sur disque, et s’affiche en texte brut afin qu’un
+expéditeur distant ne pilote ni la mise en forme ni le chargement de
+ressources.
 
 ## Désinstallation
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-import subprocess
+from . import commands
+from .commands import CommandError
 
 
 class SecretError(RuntimeError):
@@ -12,17 +13,12 @@ class SecretToolProvider:
 
     def get(self, site: str, email: str) -> str:
         try:
-            result = subprocess.run(
+            result = commands.run(
                 ["secret-tool", "lookup", "service", self.service, "site", site, "account", email],
-                check=False,
-                capture_output=True,
-                text=True,
                 timeout=15,
             )
-        except FileNotFoundError as exc:
-            raise SecretError("secret-tool est absent (paquet libsecret requis)") from exc
-        except subprocess.TimeoutExpired as exc:
-            raise SecretError("le trousseau de secrets ne répond pas") from exc
+        except CommandError as exc:
+            raise SecretError("le trousseau de secrets est indisponible") from exc
         key = result.stdout.strip()
         if result.returncode != 0 or not key:
             raise SecretError("clé API Zulip absente du trousseau")
@@ -32,30 +28,28 @@ class SecretToolProvider:
         if not key.strip():
             raise SecretError("la clé API est vide")
         try:
-            subprocess.run(
+            result = commands.run(
                 [
                     "secret-tool", "store", "--label", "Omarchy Zulip Hub API key",
                     "service", self.service, "site", site, "account", email,
                 ],
-                input=key.strip(), check=True, capture_output=True, text=True, timeout=30,
+                stdin=key.strip(), timeout=30,
             )
-        except FileNotFoundError as exc:
-            raise SecretError("secret-tool est absent (paquet libsecret requis)") from exc
-        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+        except CommandError as exc:
             raise SecretError("impossible d'enregistrer la clé dans le trousseau") from exc
+        if result.returncode != 0:
+            raise SecretError("impossible d'enregistrer la clé dans le trousseau")
 
     def delete(self, site: str, email: str) -> None:
         try:
-            result = subprocess.run(
+            result = commands.run(
                 [
                     "secret-tool", "clear", "service", self.service,
                     "site", site, "account", email,
                 ],
-                check=False, capture_output=True, text=True, timeout=15,
+                timeout=15,
             )
-        except FileNotFoundError as exc:
-            raise SecretError("secret-tool est absent (paquet libsecret requis)") from exc
-        except subprocess.TimeoutExpired as exc:
-            raise SecretError("le trousseau de secrets ne répond pas") from exc
+        except CommandError as exc:
+            raise SecretError("le trousseau de secrets est indisponible") from exc
         if result.returncode not in {0, 1}:
             raise SecretError("impossible de supprimer la clé du trousseau")

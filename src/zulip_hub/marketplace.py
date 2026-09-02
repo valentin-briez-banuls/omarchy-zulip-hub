@@ -1,11 +1,22 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
-import shutil
-import subprocess
+import stat
 
-from .files import BEGIN, END, HYPR_BLOCK, is_managed_module, write_atomic
+from . import commands
+from .commands import CommandError
+
+from .files import (
+    BEGIN,
+    END,
+    HYPR_BLOCK,
+    is_managed_module,
+    write_atomic,
+    write_exclusive,
+    write_no_follow,
+)
 
 
 PLUGIN_ID = "io.github.valentin-briez-banuls.zulip-hub"
@@ -34,12 +45,39 @@ class OsIntegration:
         return {"ok": True, "installed": installed, "plugin_id": PLUGIN_ID}
 
     @staticmethod
-    def _run(argv: list[str]) -> subprocess.CompletedProcess[str]:
+    def _run(argv: list[str]):
         try:
-            return subprocess.run(argv, check=True, capture_output=True, text=True, timeout=30)
-        except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
-            detail = getattr(exc, "stderr", "") or getattr(exc, "stdout", "") or str(exc)
-            raise IntegrationError(detail.strip()) from exc
+            result = commands.run(argv, timeout=30)
+        except CommandError as exc:
+            raise IntegrationError(str(exc)) from exc
+        if result.returncode != 0:
+            raise IntegrationError(result.stdout.strip() or f"échec de {argv[0]}")
+        return result
+
+    @staticmethod
+    def _reload_quietly() -> None:
+        """Rechargement de secours : son échec ne doit pas masquer l’erreur."""
+        try:
+            commands.run(["hyprctl", "reload"], timeout=30)
+        except CommandError:
+            pass
+
+    def _prepare_backup(self, path: Path) -> None:
+        """Libère le chemin de sauvegarde, sans jamais écrire à travers autre chose.
+
+        Une sauvegarde laissée par une installation précédente est un fichier
+        ordinaire, remplaçable. Tout le reste — lien symbolique, répertoire —
+        signale que le chemin est détourné, et le retrait est refusé.
+        """
+        try:
+            status = os.lstat(path)
+        except FileNotFoundError:
+            return
+        except OSError as exc:
+            raise IntegrationError(f"sauvegarde inaccessible: {path}") from exc
+        if not stat.S_ISREG(status.st_mode):
+            raise IntegrationError(f"chemin de sauvegarde non géré: {path}")
+        path.unlink()
 
     def _validate(self) -> None:
         self._run(["hyprland", "--verify-config", "-c", str(self.hypr_main)])
@@ -60,21 +98,22 @@ class OsIntegration:
         if not is_managed_module(self.hypr_module):
             raise IntegrationError(f"fichier existant non géré: {self.hypr_module}")
         previous_module = self.hypr_module.read_bytes() if self.hypr_module.exists() else None
+        original = self.hypr_main.read_bytes()
         backup = self.hypr_main.with_suffix(".lua.zulip-hub.bak")
-        shutil.copy2(self.hypr_main, backup)
+        self._prepare_backup(backup)
+        write_exclusive(backup, original)
         try:
-            self.hypr_module.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(self.source_module, self.hypr_module)
+            write_no_follow(self.hypr_module, self.source_module.read_bytes())
             if not managed:
                 write_atomic(self.hypr_main, text.rstrip() + "\n" + HYPR_BLOCK)
             self._validate()
         except Exception:
-            shutil.copy2(backup, self.hypr_main)
+            write_no_follow(self.hypr_main, original)
             if previous_module is None:
                 self.hypr_module.unlink(missing_ok=True)
             else:
-                self.hypr_module.write_bytes(previous_module)
-            subprocess.run(["hyprctl", "reload"], check=False, capture_output=True, text=True)
+                write_no_follow(self.hypr_module, previous_module)
+            self._reload_quietly()
             raise
         return self.status()
 
@@ -86,10 +125,22 @@ class OsIntegration:
         text = self.hypr_main.read_text(encoding="utf-8")
         if BEGIN in text and HYPR_BLOCK not in text:
             raise IntegrationError("bloc Zulip Hub modifié; retrait refusé")
-        if HYPR_BLOCK in text:
-            write_atomic(self.hypr_main, text.replace(HYPR_BLOCK, "\n"))
-        self.hypr_module.unlink(missing_ok=True)
-        self._validate()
+        # Le retrait est une transaction : une validation Hyprland qui échoue
+        # laisserait sinon la configuration amputée de son bloc et le module
+        # supprimé, sans moyen de revenir en arrière.
+        previous_module = self.hypr_module.read_bytes() if self.hypr_module.exists() else None
+        original = self.hypr_main.read_bytes()
+        try:
+            if HYPR_BLOCK in text:
+                write_atomic(self.hypr_main, text.replace(HYPR_BLOCK, "\n"))
+            self.hypr_module.unlink(missing_ok=True)
+            self._validate()
+        except Exception:
+            write_no_follow(self.hypr_main, original)
+            if previous_module is not None:
+                write_no_follow(self.hypr_module, previous_module)
+            self._reload_quietly()
+            raise
         return {"ok": True, "installed": False, "plugin_id": PLUGIN_ID}
 
 

@@ -1,5 +1,33 @@
 # Historique des versions
 
+## 2.4.0 — 2026-09-02
+
+Revue de sécurité de la place de marché Omarchy : cinq points corrigés.
+
+- **La clé API ne peut plus suivre une redirection.** `urllib` recopie les
+  en-têtes vers la cible d'une redirection en n'écartant que `content-length`
+  et `content-type` : la clé partait donc vers l'hôte choisi par le serveur,
+  fût-il d'un autre domaine. Seule une redirection vers exactement la même
+  origine HTTPS est suivie, et l'adresse du serveur est canonicalisée avant que
+  l'en-tête d'authentification ne soit fabriqué.
+- **Tout ce qui vient du serveur est borné** avant d'être alloué ou persisté :
+  taille de réponse, longueur des chaînes, taille des collections, limite de
+  message imposée par le serveur. Les valeurs de configuration non finies sont
+  refusées : `NaN` traversait toutes les bornes, une comparaison avec lui étant
+  toujours fausse.
+- **L'intégration Hyprland ne suit plus aucun lien symbolique.** Un lien au
+  chemin du module n'est jamais considéré comme géré, un lien cassé n'est plus
+  confondu avec une absence, la sauvegarde est créée exclusivement, et le
+  retrait est redevenu une transaction avec retour arrière.
+- **Le corps d'un message est rendu en texte brut.** Un rendu enrichi laissait
+  un expéditeur distant piloter la mise en forme et le chargement de
+  ressources embarquées, sans politique possible côté Qt.
+- **Les commandes auxiliaires passent par un module unique** : exécutables
+  résolus dans un `PATH` de confiance, environnement réduit à une liste
+  blanche, sortie bornée pendant qu'elle est produite, terminaison du groupe de
+  processus entier. `subprocess` ne subsiste que dans ce module. L'arrêt du
+  bridge a désormais une échéance.
+
 ## 2.3.1 — 2026-09-02
 
 - Le plugin ne pilote plus aucun service utilisateur. Cinq appels `systemctl`

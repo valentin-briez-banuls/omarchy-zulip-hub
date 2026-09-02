@@ -8,6 +8,13 @@ import json
 import os
 import tempfile
 
+from .limits import (
+    MAX_MESSAGE_LENGTH,
+    bounded_list,
+    bounded_text,
+    clamped_number,
+)
+
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -66,12 +73,14 @@ class StateReducer:
 
     def initialized(self, registration: dict[str, Any]) -> None:
         unread = registration.get("unread_msgs", {})
-        mention_ids = set(unread.get("mentions", []))
-        private_ids = set(unread.get("pms", []))
+        if not isinstance(unread, dict):
+            unread = {}
+        mention_ids = set(bounded_list(unread.get("mentions", [])))
+        private_ids = set(bounded_list(unread.get("pms", [])))
         stream_ids: set[int] = set()
-        for entry in unread.get("streams", []):
+        for entry in bounded_list(unread.get("streams", [])):
             if isinstance(entry, list) and len(entry) == 2 and isinstance(entry[1], list):
-                stream_ids.update(entry[1])
+                stream_ids.update(bounded_list(entry[1]))
         self._mention_ids = mention_ids
         self._private_ids = private_ids
         self._unread_ids = mention_ids | private_ids | stream_ids
@@ -79,9 +88,10 @@ class StateReducer:
         self.state.connected = True
         self.state.error = None
         self.state.last_sync = utc_now()
-        maximum = registration.get("max_message_length", 10000)
-        if isinstance(maximum, int) and not isinstance(maximum, bool) and maximum > 0:
-            self.state.max_message_length = maximum
+        self.state.max_message_length = int(clamped_number(
+            registration.get("max_message_length", 10000),
+            default=10000, minimum=1, maximum=MAX_MESSAGE_LENGTH,
+        ))
 
     def apply(self, event: dict[str, Any]) -> None:
         event_type = event.get("type")
@@ -130,19 +140,25 @@ class StateReducer:
 
     @staticmethod
     def _summary(message: dict[str, Any]) -> dict[str, Any]:
-        recipients = message.get("display_recipient", [])
+        """Résumé borné d’un message, sans son corps.
+
+        Tout ce qui vient du serveur est tronqué avant d’entrer dans l’état :
+        ce fichier est relu tel quel par l’interface.
+        """
+        is_stream = message.get("type") == "stream"
+        recipients = bounded_list(message.get("display_recipient", []))
         return {
             "id": message.get("id"),
             "type": message.get("type"),
-            "sender": message.get("sender_full_name", ""),
+            "sender": bounded_text(message.get("sender_full_name", "")),
             "sender_id": message.get("sender_id"),
-            "channel": message.get("display_recipient") if message.get("type") == "stream" else None,
-            "topic": message.get("subject") if message.get("type") == "stream" else None,
-            "stream_id": message.get("stream_id") if message.get("type") == "stream" else None,
+            "channel": bounded_text(message.get("display_recipient")) if is_stream else None,
+            "topic": bounded_text(message.get("subject")) if is_stream else None,
+            "stream_id": message.get("stream_id") if is_stream else None,
             "recipient_ids": [
                 recipient.get("id") for recipient in recipients
                 if isinstance(recipient, dict) and isinstance(recipient.get("id"), int)
             ] if message.get("type") == "private" else [],
             "timestamp": message.get("timestamp"),
-            "flags": message.get("flags", []),
+            "flags": [bounded_text(flag, 64) for flag in bounded_list(message.get("flags", []))],
         }

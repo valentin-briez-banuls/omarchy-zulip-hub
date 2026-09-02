@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import json
 import re
-import shutil
-import subprocess
 from typing import Any, Callable, Sequence
 
+from . import commands
+from .commands import CommandError
 from .config import BridgeConfig, WorkspaceConfig
 
 
@@ -19,8 +19,8 @@ class HyprlandController:
         config: WorkspaceConfig,
         launch_command: Sequence[str],
         *,
-        run: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
-        spawn: Callable[..., Any] = subprocess.Popen,
+        run: Callable[..., Any] = commands.run,
+        spawn: Callable[..., Any] = commands.spawn,
     ):
         self.config = config
         self.launch_command = list(launch_command)
@@ -77,14 +77,8 @@ class HyprlandController:
             raise HyprlandError("aucune commande de lancement Zulip disponible")
         self.dispatch("togglespecialworkspace", self.config.name)
         try:
-            self.spawn(
-                self.launch_command,
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                start_new_session=True,
-            )
-        except OSError as exc:
+            self.spawn(self.launch_command)
+        except (CommandError, OSError) as exc:
             # Avoid leaving an empty special workspace visible after a failed launch.
             try:
                 self.dispatch("togglespecialworkspace", self.config.name)
@@ -122,12 +116,10 @@ class HyprlandController:
         except json.JSONDecodeError as exc:
             raise HyprlandError(f"réponse JSON invalide pour {label}") from exc
 
-    def _run(self, command: list[str]) -> subprocess.CompletedProcess[str]:
+    def _run(self, command: list[str]) -> Any:
         try:
-            return self.run(
-                command, check=False, capture_output=True, text=True, timeout=3,
-            )
-        except (FileNotFoundError, subprocess.TimeoutExpired) as exc:
+            return self.run(command, timeout=3)
+        except CommandError as exc:
             raise HyprlandError("hyprctl indisponible") from exc
 
 
@@ -135,11 +127,11 @@ def resolve_launch_command(config: BridgeConfig) -> list[str]:
     if config.workspace.launch_command:
         return list(config.workspace.launch_command)
     desktop = list(config.opening.desktop_command)
-    if desktop and shutil.which(desktop[0]):
-        if shutil.which("uwsm-app"):
+    if desktop and commands.available(desktop[0]):
+        if commands.available("uwsm-app"):
             return ["uwsm-app", "--", *desktop]
         return desktop
-    if shutil.which("omarchy-launch-webapp"):
+    if commands.available("omarchy-launch-webapp"):
         return ["omarchy-launch-webapp", config.account.site, "--class=zulip-hub"]
     raise HyprlandError(
         "aucun client Zulip ni lanceur webapp Omarchy disponible; configurez workspace.launch_command"

@@ -857,10 +857,11 @@ Panel {
             Text {
               visible: reader.message !== null
               width: parent.width
-              // Zulip renvoie du Markdown brut ; ses extensions propres
-              // (mentions, emojis, liens de canaux) restent litterales.
+              // Contenu ecrit par un tiers : rendu en texte brut. Un rendu
+              // enrichi laisserait lexpediteur piloter la mise en forme et le
+              // chargement de ressources embarquees, sans politique possible.
               text: reader.message ? String(reader.message.content || "") : ""
-              textFormat: Text.MarkdownText
+              textFormat: Text.PlainText
               wrapMode: Text.Wrap
               color: root.foreground
               font.family: root.fontFamily

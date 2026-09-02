@@ -5,10 +5,11 @@ import html
 import logging
 import os
 import re
-import subprocess
 import time
 from typing import Any, Callable
 
+from . import commands
+from .commands import CommandError
 from .config import NotificationConfig
 from .links import LinkError, message_url
 
@@ -22,11 +23,8 @@ MENTION_FLAGS = {
 class LockDetector:
     def is_locked(self) -> bool:
         try:
-            result = subprocess.run(
-                ["omarchy-shell", "lock", "isLocked"],
-                check=False, capture_output=True, text=True, timeout=2,
-            )
-        except (FileNotFoundError, subprocess.TimeoutExpired):
+            result = commands.run(["omarchy-shell", "lock", "isLocked"], timeout=2)
+        except CommandError:
             return True
         # Fail closed: if the lock service cannot answer, do not expose text.
         return result.returncode != 0 or result.stdout.strip() != "false"
@@ -55,10 +53,8 @@ class OmarchyNotificationSender:
         click_command = ["/usr/bin/python3", runner] if runner else ["zulip-hub"]
         command.extend([summary, body, "--exec", *click_command, "open-url", url])
         try:
-            result = subprocess.run(
-                command, check=False, capture_output=True, text=True, timeout=5,
-            )
-        except (FileNotFoundError, subprocess.TimeoutExpired) as exc:
+            result = commands.run(command, timeout=5)
+        except CommandError as exc:
             LOGGER.warning("notification Omarchy indisponible: %s", type(exc).__name__)
             return None
         if result.returncode != 0:

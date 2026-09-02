@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import shutil
-import subprocess
 from typing import Sequence
 
+from . import commands
+from .commands import CommandError
 from .config import OpenConfig
 
 
@@ -18,27 +18,21 @@ class UrlOpener:
     def command(self, url: str) -> list[str]:
         desktop = list(self.config.desktop_command)
         if self.config.mode in {"auto", "desktop"} and desktop:
-            if shutil.which(desktop[0]):
+            if commands.available(desktop[0]):
                 return [*desktop, url]
             if self.config.mode == "desktop":
                 raise OpenError(f"application Zulip introuvable: {desktop[0]}")
         if self.config.mode == "desktop":
             raise OpenError("open.desktop_command doit être configuré en mode desktop")
-        if shutil.which("uwsm-app"):
+        if commands.available("uwsm-app"):
             return ["uwsm-app", "--", "xdg-open", url]
-        if shutil.which("xdg-open"):
+        if commands.available("xdg-open"):
             return ["xdg-open", url]
         raise OpenError("aucun ouvreur d’URL disponible")
 
     def open(self, url: str) -> None:
         try:
-            subprocess.Popen(
-                self.command(url),
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                start_new_session=True,
-            )
-        except OSError as exc:
+            commands.spawn(self.command(url))
+        except CommandError as exc:
             raise OpenError("impossible d’ouvrir le message Zulip") from exc
 

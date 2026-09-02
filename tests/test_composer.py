@@ -68,6 +68,25 @@ class ComposerTests(unittest.TestCase):
         )
         self.assertEqual(result, {"ok": True, "message_id": 42})
 
+    @patch("zulip_hub.composer.ZulipClient")
+    def test_the_directory_cannot_be_flooded_by_the_server(self, client_class):
+        from zulip_hub.limits import MAX_COLLECTION, MAX_TEXT
+        client = client_class.return_value
+        client.test_connection.return_value = {"user_id": 1}
+        client.users.return_value = [
+            {
+                "user_id": index + 2,
+                "full_name": "N" * (MAX_TEXT * 3),
+                "email": "E" * (MAX_TEXT * 3),
+                "is_active": True,
+            }
+            for index in range(MAX_COLLECTION * 2)
+        ]
+        result = ComposerManager(self.config, self.state, self.secrets).directory()
+        self.assertEqual(len(result["users"]), MAX_COLLECTION)
+        self.assertEqual(len(result["users"][0]["full_name"]), MAX_TEXT)
+        self.assertEqual(len(result["users"][0]["email"]), MAX_TEXT)
+
     def test_send_rejects_missing_recipient_empty_and_oversized_content(self):
         manager = ComposerManager(self.config, self.state, self.secrets)
         for payload in (

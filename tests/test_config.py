@@ -33,6 +33,21 @@ class ConfigTests(unittest.TestCase):
         with self.assertRaisesRegex(ConfigError, "https"):
             load_config(self.path)
 
+    def test_non_finite_or_absurd_bridge_values_are_refused(self):
+        head = '[account]\nsite="https://chat.example.com"\nemail="me@example.com"\n[bridge]\n'
+        for body in (
+            "request_timeout_seconds = 999999999",
+            "request_timeout_seconds = nan",
+            "initial_backoff_seconds = nan",
+            "max_backoff_seconds = inf",
+            "max_backoff_seconds = 999999999",
+            'request_timeout_seconds = "beaucoup"',
+        ):
+            with self.subTest(body=body):
+                self.path.write_text(head + body + "\n")
+                with self.assertRaises(ConfigError):
+                    load_config(self.path)
+
     def test_loads_notification_and_opening_rules(self):
         self.path.write_text(
             '[account]\nsite="https://chat.example.com"\nemail="me@example.com"\n'
