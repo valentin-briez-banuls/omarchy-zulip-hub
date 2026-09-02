@@ -1,5 +1,16 @@
 # Historique des versions
 
+## 2.3.1 — 2026-09-02
+
+- Le plugin ne pilote plus aucun service utilisateur. Cinq appels `systemctl`
+  visaient encore `zulip-hub.service`, hérités de la 1.x : la 2.x n'installe
+  plus d'unité systemd et le bridge suit le cycle de vie du shell, ces
+  branches étaient donc inatteignables et auraient piloté un service
+  inexistant. Le module d'accueil perd 56 lignes avec elles, ainsi que son
+  champ de lancement de commandes et les imports `os` et `subprocess`.
+- Un test verrouille désormais la propriété : aucune commande externe n'est
+  lancée, quel que soit l'environnement.
+
 ## 2.3.0 — 2026-09-02
 
 - Le panneau signale lui-même qu'une mise à jour est installée mais pas encore

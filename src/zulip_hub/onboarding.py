@@ -2,11 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
-import os
 from pathlib import Path
 import re
 import shlex
-import subprocess
 import sys
 from typing import Any, TextIO
 from urllib.parse import urlsplit
@@ -24,7 +22,6 @@ class OnboardingError(RuntimeError):
 @dataclass
 class OnboardingManager:
     config_path: Path
-    run: Any = subprocess.run
     secrets: SecretToolProvider | None = None
     state_path: Path | None = None
 
@@ -55,20 +52,12 @@ class OnboardingManager:
         }
 
     def _service_state(self) -> str:
-        if self._embedded():
-            return "inactive" if self._pause_path().exists() else "active"
-        try:
-            result = self.run(
-                ["systemctl", "--user", "is-active", "zulip-hub.service"],
-                check=False, capture_output=True, text=True, timeout=10,
-            )
-        except (OSError, subprocess.TimeoutExpired):
-            return "unknown"
-        return result.stdout.strip() or "inactive"
+        """Le bridge suit le cycle de vie du shell, pas celui d’un service.
 
-    @staticmethod
-    def _embedded() -> bool:
-        return os.environ.get("ZULIP_HUB_EMBEDDED") == "1"
+        Sa mise en pause tient dans un marqueur que le lanceur consulte au
+        démarrage ; le plugin ne pilote aucun service utilisateur.
+        """
+        return "inactive" if self._pause_path().exists() else "active"
 
     def _pause_path(self) -> Path:
         assert self.state_path is not None
@@ -208,16 +197,7 @@ class OnboardingManager:
         except Exception:
             write_atomic(self.config_path, original, 0o600)
             raise
-        if self._embedded():
-            self._request_restart()
-        elif self._service_state() == "active":
-            try:
-                self.run(
-                    ["systemctl", "--user", "restart", "zulip-hub.service"],
-                    check=True, capture_output=True, text=True, timeout=30,
-                )
-            except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
-                raise OnboardingError("Réglages enregistrés, mais le bridge n’a pas redémarré.") from exc
+        self._request_restart()
         result = self.status()
         result["message"] = "Réglages enregistrés."
         return result
@@ -245,21 +225,8 @@ class OnboardingManager:
         status = self.status()
         if not status["configured"]:
             raise OnboardingError("Configurez d’abord le compte Zulip.")
-        if self._embedded():
-            self._pause_path().unlink(missing_ok=True)
-            self._request_restart()
-        else:
-            try:
-                self.run(
-                    ["systemctl", "--user", "enable", "--now", "zulip-hub.service"],
-                    check=True, capture_output=True, text=True, timeout=30,
-                )
-                self.run(
-                    ["systemctl", "--user", "restart", "zulip-hub.service"],
-                    check=True, capture_output=True, text=True, timeout=30,
-                )
-            except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
-                raise OnboardingError("Le bridge Zulip n’a pas pu redémarrer.") from exc
+        self._pause_path().unlink(missing_ok=True)
+        self._request_restart()
         result = self.diagnostics()
         result["message"] = "Reconnexion du bridge demandée."
         return result
@@ -309,33 +276,18 @@ class OnboardingManager:
         assert self.secrets is not None
         self.secrets.store(site, email, api_key)
         self._write_account(site, email)
-        if self._embedded():
-            self._pause_path().unlink(missing_ok=True)
-            self._request_restart()
-        else:
-            try:
-                self.run(
-                    ["systemctl", "--user", "enable", "--now", "zulip-hub.service"],
-                    check=True, capture_output=True, text=True, timeout=30,
-                )
-            except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
-                raise OnboardingError("Connexion validée, mais le service n’a pas pu démarrer.") from exc
+        self._pause_path().unlink(missing_ok=True)
+        self._request_restart()
         result = self.status()
         result["identity"] = str(identity.get("full_name") or identity.get("email") or email)
         result["message"] = "Connexion réussie. Zulip Hub est actif."
         return result
 
     def deactivate(self) -> dict[str, Any]:
-        if self._embedded():
-            pause = self._pause_path()
-            pause.parent.mkdir(parents=True, exist_ok=True)
-            pause.touch()
-            self._request_restart()
-        else:
-            self.run(
-                ["systemctl", "--user", "disable", "--now", "zulip-hub.service"],
-                check=False, capture_output=True, text=True, timeout=30,
-            )
+        pause = self._pause_path()
+        pause.parent.mkdir(parents=True, exist_ok=True)
+        pause.touch()
+        self._request_restart()
         result = self.status()
         result["message"] = "Zulip Hub est en pause."
         return result
@@ -345,18 +297,10 @@ class OnboardingManager:
             config = load_config(self.config_path)
             assert self.secrets is not None
             self.secrets.get(config.account.site, config.account.email)
-            if self._embedded():
-                self._pause_path().unlink(missing_ok=True)
-                self._request_restart()
-            else:
-                self.run(
-                    ["systemctl", "--user", "enable", "--now", "zulip-hub.service"],
-                    check=True, capture_output=True, text=True, timeout=30,
-                )
         except (ConfigError, SecretError) as exc:
             raise OnboardingError("Le compte doit être reconnecté avant activation.") from exc
-        except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
-            raise OnboardingError("Le service Zulip Hub n’a pas pu démarrer.") from exc
+        self._pause_path().unlink(missing_ok=True)
+        self._request_restart()
         result = self.status()
         result["message"] = "Zulip Hub est actif."
         return result

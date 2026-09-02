@@ -2,7 +2,6 @@ from io import StringIO
 import json
 from pathlib import Path
 import shlex
-import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -28,21 +27,6 @@ class FakeSecrets:
         self.values.pop((site, email), None)
 
 
-class FakeRunner:
-    def __init__(self):
-        self.active = False
-        self.calls = []
-
-    def __call__(self, argv, **kwargs):
-        self.calls.append(tuple(argv))
-        if argv[:3] == ["systemctl", "--user", "enable"]:
-            self.active = True
-        if argv[:3] == ["systemctl", "--user", "disable"]:
-            self.active = False
-        output = "active\n" if self.active else "inactive\n"
-        return subprocess.CompletedProcess(argv, 0, output, "")
-
-
 class OnboardingTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
@@ -51,8 +35,7 @@ class OnboardingTests(unittest.TestCase):
         source = Path(__file__).resolve().parents[1] / "config/config.example.toml"
         self.config.write_text(source.read_text())
         self.secrets = FakeSecrets()
-        self.runner = FakeRunner()
-        self.manager = OnboardingManager(self.config, self.runner, self.secrets, self.state)
+        self.manager = OnboardingManager(self.config, self.secrets, self.state)
 
     def tearDown(self):
         self.temporary.cleanup()
@@ -108,9 +91,8 @@ class OnboardingTests(unittest.TestCase):
         self.assertTrue(result["configured"])
         self.assertTrue(result["active"])
 
-    @patch.dict("os.environ", {"ZULIP_HUB_EMBEDDED": "1"})
     @patch("zulip_hub.onboarding.ZulipClient.test_connection")
-    def test_embedded_mode_uses_pause_and_restart_markers_without_systemd(self, test_connection):
+    def test_pause_and_restart_are_driven_by_markers_alone(self, test_connection):
         test_connection.return_value = {"email": "ada@example.org"}
         result = self.manager.setup({
             "site": "https://chat.example.org",
@@ -118,12 +100,40 @@ class OnboardingTests(unittest.TestCase):
             "api_key": "top-secret",
         })
         self.assertTrue(result["active"])
-        self.assertEqual(self.runner.calls, [])
         self.assertTrue((self.state.parent / "restart").exists())
         self.manager.deactivate()
         self.assertTrue((self.state.parent / "paused").exists())
         self.manager.activate()
         self.assertFalse((self.state.parent / "paused").exists())
+
+    @patch("subprocess.run")
+    @patch("zulip_hub.onboarding.ZulipClient.test_connection")
+    def test_no_external_command_is_ever_run(self, test_connection, run):
+        """Le plugin ne pilote aucun service : la place du bridge est le shell.
+
+        Cette propriete est celle que la place de marche inspecte ; la perdre
+        reintroduirait une capacite que le plugin n exerce pas.
+        """
+        test_connection.return_value = {"email": "ada@example.org"}
+        self.manager.setup({
+            "site": "https://chat.example.org",
+            "email": "ada@example.org",
+            "api_key": "top-secret",
+        })
+        self.manager.save_settings({
+            "notifications_enabled": True, "private_messages": True,
+            "mentions": True, "followed_topics": True,
+            "other_messages": False, "hide_content_when_locked": True,
+            "group_window_seconds": 10, "muted_channels": [],
+            "always_channels": [], "open_mode": "auto",
+            "desktop_command": "", "workspace_launch_command": "",
+        })
+        self.manager.deactivate()
+        self.manager.activate()
+        self.manager.reconnect()
+        self.manager.status()
+        self.manager.diagnostics()
+        run.assert_not_called()
 
     def test_protocol_returns_json_error_without_echoing_secret(self):
         output = StringIO()
@@ -177,8 +187,7 @@ class OnboardingTests(unittest.TestCase):
         text = self.manager.status()["settings"]["desktop_command_text"]
         self.assertEqual(shlex.split(text), ["client", "--profile", "Work Chat"])
 
-    def test_settings_restart_an_active_bridge(self):
-        self.runner.active = True
+    def test_settings_ask_the_bridge_to_restart(self):
         self.manager.save_settings({
             "notifications_enabled": True, "private_messages": True,
             "mentions": True, "followed_topics": True,
@@ -187,9 +196,7 @@ class OnboardingTests(unittest.TestCase):
             "always_channels": [], "open_mode": "auto",
             "desktop_command": "", "workspace_launch_command": "",
         })
-        self.assertIn(
-            ("systemctl", "--user", "restart", "zulip-hub.service"), self.runner.calls
-        )
+        self.assertTrue((self.state.parent / "restart").exists())
 
     def test_diagnostics_read_only_public_bridge_state(self):
         self.state.write_text(json.dumps({
@@ -208,18 +215,15 @@ class OnboardingTests(unittest.TestCase):
             self.manager.reconnect()
 
     @patch("zulip_hub.onboarding.ZulipClient.test_connection")
-    def test_reconnect_enables_service_for_future_sessions(self, test_connection):
+    def test_reconnect_lifts_the_pause_and_asks_for_a_restart(self, test_connection):
         test_connection.return_value = {"email": "ada@example.org"}
         self.manager.setup({
             "site": "https://chat.example.org", "email": "ada@example.org",
             "api_key": "top-secret",
         })
         self.manager.deactivate()
+        self.assertTrue((self.state.parent / "paused").exists())
+        (self.state.parent / "restart").unlink(missing_ok=True)
         self.manager.reconnect()
-        self.assertIn(
-            ("systemctl", "--user", "enable", "--now", "zulip-hub.service"),
-            self.runner.calls,
-        )
-        self.assertIn(
-            ("systemctl", "--user", "restart", "zulip-hub.service"), self.runner.calls
-        )
+        self.assertFalse((self.state.parent / "paused").exists())
+        self.assertTrue((self.state.parent / "restart").exists())
